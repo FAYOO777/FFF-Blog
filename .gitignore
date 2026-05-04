@@ -1,0 +1,62 @@
+# ===== 依赖 =====
+node_modules/
+
+# ===== Astro =====
+.astro/
+
+# ===== 构建产物 =====
+dist/
+.output/
+.vercel/
+.netlify/
+.wrangler/
+.serverless/
+.firebase/
+
+# ===== 环境变量 =====
+.env
+.env.local
+.env.*.local
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db
+
+# ===== 编辑器 =====
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.sw?
+
+# ===== 日志 =====
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ===== 缓存 =====
+.cache/
+.eslintcache
+.stylelintcache
+.prettiercache
+.turbo/
+
+# ===== TypeScript =====
+*.tsbuildinfo
+
+# ===== 临时文件 =====
+tmp/
+temp/
+*.tmp
+*.bak
+
+# ===== 密钥 =====
+*.pem
+*.private.key
+*-key.pem
+*.cert
+
+# ===== 其他包管理器锁文件（保留 pnpm-lock.yaml）=====
+package-lock.json
+yarn.lock

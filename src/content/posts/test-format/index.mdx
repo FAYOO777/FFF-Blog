@@ -1,0 +1,564 @@
+---
+title: "排版格式全面测试文档"
+pubDate: 2026-05-04
+author: "Fayoo"
+description: "这是一篇用于测试个人博客各种排版格式展示效果的完整 MDX 文档，涵盖标题、文本、列表、代码、表格、引用、媒体、数学公式及自定义组件等。"
+tags: ["测试", "MDX", "排版", "格式"]
+---
+
+# 排版格式全面测试文档
+
+> 本文档用于测试个人博客中各种 Markdown / MDX 格式的渲染效果，请逐节检查显示是否符合预期。
+
+---
+
+## 一、标题层级
+
+# H1 — 一级标题
+
+## H2 — 二级标题
+
+### H3 — 三级标题
+
+#### H4 — 四级标题
+
+##### H5 — 五级标题
+
+###### H6 — 六级标题
+
+---
+
+## 二、正文文本
+
+这是一段普通正文。博客的排版质量往往体现在正文的行高、字距与字体选择上。合适的行高（通常为 1.6～1.8）可以显著提升长文阅读体验。
+
+这是第二段。段落之间应有足够的间距，避免文字密集堆叠造成视觉压迫感。
+
+**粗体文本** 用于强调重要内容。
+*斜体文本* 通常用于书名、术语或轻度强调。
+***粗斜体*** 表示最高级别的强调。
+~~删除线文本~~ 用于表示已废弃或需要更正的内容。
+`行内代码` 用于展示变量名、函数名或短命令。
+
+这是一个带有[超链接](https://example.com)的句子，链接样式应与正文有明显区分，并在悬停时有视觉反馈。
+
+这是一个带有<a href="https://example.com" target="_blank" rel="noopener noreferrer">新窗口链接</a>的句子（如果你的博客支持属性语法）。
+
+---
+
+## 三、分割线
+
+分割线上方内容。
+
+---
+
+分割线下方内容。
+
+***
+
+另一种分割线语法。
+
+---
+
+## 四、列表
+
+### 4.1 无序列表
+
+- 苹果
+- 香蕉
+- 樱桃
+  - 甜樱桃
+  - 酸樱桃
+    - 进口酸樱桃
+    - 国产酸樱桃
+- 西瓜
+
+### 4.2 有序列表
+
+1. 第一步：安装依赖
+2. 第二步：配置环境变量
+3. 第三步：启动开发服务器
+   1. 运行 `npm run dev`
+   2. 打开浏览器访问 `localhost:3000`
+4. 第四步：构建生产版本
+
+### 4.3 任务列表（Todo List）
+
+- [x] 搭建博客框架
+- [x] 配置 MDX 支持
+- [x] 编写测试文档
+- [ ] 部署到生产环境
+- [ ] 配置自定义域名
+- [ ] 添加评论系统
+
+### 4.4 定义列表（如支持）
+
+MDX
+: 一种将 Markdown 与 JSX 结合的格式，允许在文档中直接使用 React 组件。
+
+Frontmatter
+: YAML 格式的元数据块，位于文档顶部，用两行 `---` 包裹。
+
+---
+
+## 五、引用块
+
+### 5.1 单层引用
+
+> 这是一段普通引用。引用块通常用于摘录他人的话语、文献段落，或对某个观点进行特别强调。
+
+### 5.2 多段引用
+
+> 这是引用的第一段。
+>
+> 这是引用的第二段。引用块内同样支持 **粗体**、*斜体* 和 `行内代码`。
+
+### 5.3 嵌套引用
+
+> 外层引用：某人说了一句话。
+>
+> > 内层引用：这句话引用自另一个人。
+> >
+> > > 三层嵌套引用（较少见但应支持）。
+
+### 5.4 带署名的引用
+
+> 任何足够先进的技术，初看起来都与魔法无异。
+>
+> — Arthur C. Clarke
+
+---
+
+## 六、代码块
+
+### 6.1 无语言标注
+
+```
+这是一段没有语言标注的代码块。
+应使用等宽字体，保留缩进。
+    缩进测试：这行有4个空格缩进。
+```
+
+### 6.2 Bash / Shell
+
+```bash
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+
+# 构建生产版本
+npm run build && npm run export
+
+# 带注释的复杂命令
+find . -name "*.log" -mtime +7 -exec rm -f {} \;
+```
+
+### 6.3 JavaScript
+
+```javascript
+// 防抖函数实现
+function debounce(fn, delay = 300) {
+  let timer = null;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      fn.apply(this, args);
+    }, delay);
+  };
+}
+
+const handleResize = debounce(() => {
+  console.log("窗口尺寸已变化");
+}, 500);
+
+window.addEventListener("resize", handleResize);
+```
+
+### 6.4 TypeScript
+
+```typescript
+interface BlogPost {
+  id: string;
+  title: string;
+  date: Date;
+  tags: string[];
+  content: string;
+  published: boolean;
+}
+
+async function fetchPost(id: string): Promise<BlogPost | null> {
+  try {
+    const res = await fetch(`/api/posts/${id}`);
+    if (!res.ok) return null;
+    return res.json() as Promise<BlogPost>;
+  } catch (error) {
+    console.error("获取文章失败:", error);
+    return null;
+  }
+}
+```
+
+### 6.5 React / JSX
+
+```jsx
+import { useState, useEffect } from "react";
+
+export function Counter({ initialCount = 0 }) {
+  const [count, setCount] = useState(initialCount);
+
+  useEffect(() => {
+    document.title = `计数：${count}`;
+  }, [count]);
+
+  return (
+    <div className="counter">
+      <button onClick={() => setCount((c) => c - 1)}>−</button>
+      <span>{count}</span>
+      <button onClick={() => setCount((c) => c + 1)}>+</button>
+    </div>
+  );
+}
+```
+
+### 6.6 Python
+
+```python
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+@dataclass
+class Article:
+    title: str
+    content: str
+    created_at: datetime = datetime.now()
+    published: bool = False
+    author: Optional[str] = None
+
+def word_count(text: str) -> int:
+    """统计文章字数（中英文混合）"""
+    import re
+    # 中文字符
+    chinese = len(re.findall(r'[\u4e00-\u9fff]', text))
+    # 英文单词
+    english = len(re.findall(r'\b[a-zA-Z]+\b', text))
+    return chinese + english
+```
+
+### 6.7 CSS
+
+```css
+/* 文章正文排版 */
+.prose {
+  --font-body: "Noto Serif SC", Georgia, serif;
+  --color-text: #1a1a1a;
+  --color-muted: #6b7280;
+  --line-height: 1.75;
+  --paragraph-spacing: 1.5em;
+
+  font-family: var(--font-body);
+  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  line-height: var(--line-height);
+  color: var(--color-text);
+}
+
+.prose p + p {
+  margin-top: var(--paragraph-spacing);
+}
+
+@media (prefers-color-scheme: dark) {
+  .prose {
+    --color-text: #e5e7eb;
+    --color-muted: #9ca3af;
+  }
+}
+```
+
+### 6.8 JSON
+
+```json
+{
+  "name": "my-blog",
+  "version": "1.0.0",
+  "dependencies": {
+    "next": "^14.0.0",
+    "@next/mdx": "^14.0.0",
+    "remark-gfm": "^4.0.0",
+    "rehype-highlight": "^7.0.0",
+    "rehype-katex": "^7.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  }
+}
+```
+
+### 6.9 带行号和高亮（如支持）
+
+```javascript {1,3-5} showLineNumbers
+const greeting = "Hello, World!"; // 第1行（高亮）
+const year = 2026;
+const stack = ["Next.js", "MDX", "Tailwind"]; // 第3行（高亮）
+const isAwesome = true; // 第4行（高亮）
+console.log(greeting, stack); // 第5行（高亮）
+```
+
+---
+
+## 七、表格
+
+### 7.1 基础表格
+
+| 名称     | 类型     | 默认值  | 说明               |
+| -------- | -------- | ------- | ------------------ |
+| `title`  | `string` | —       | 文章标题（必填）   |
+| `date`   | `string` | 今日    | 发布日期           |
+| `tags`   | `array`  | `[]`    | 标签列表           |
+| `draft`  | `boolean`| `false` | 是否为草稿         |
+
+### 7.2 对齐方式
+
+| 左对齐       |   居中对齐   |       右对齐 |
+| :----------- | :----------: | -----------: |
+| 内容靠左     |   内容居中   |     内容靠右 |
+| Next.js      |    React     |    Tailwind  |
+| 1,200        |    3,400     |       5,600  |
+
+### 7.3 复杂表格
+
+| 框架      | Stars  | 语言       | 适用场景           | 学习难度 |
+| --------- | -----: | ---------- | ------------------ | :------: |
+| Next.js   | 120k+  | TypeScript | 全栈 Web 应用      |  ⭐⭐⭐   |
+| Astro     | 45k+   | TypeScript | 内容驱动型网站     |  ⭐⭐     |
+| Nuxt      | 55k+   | TypeScript | Vue 生态全栈应用   |  ⭐⭐⭐   |
+| SvelteKit | 18k+   | JavaScript | 轻量高性能应用     |  ⭐⭐     |
+
+---
+
+## 八、图片
+
+### 8.1 基础图片
+
+![一段示例代码的特写](https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800&q=80)
+
+### 8.2 带标题的图片
+
+![夜间模式下的代码编辑器](https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80)
+*图注：一个典型的代码编辑器界面，展示了深色主题配色*
+
+### 8.3 小尺寸图片
+
+![头像示例](https://i.pravatar.cc/100)
+
+---
+
+## 九、脚注
+
+这里有一个脚注引用[^1]，还有另一个脚注[^note]。
+
+脚注通常出现在文章底部，用于补充说明或提供参考来源，不打断正文阅读流。
+
+[^1]: 这是第一个脚注的内容，支持 **粗体** 和 `行内代码`。
+
+[^note]: 这是一个带有自定义标识符的脚注，内容可以很长，甚至包含多个句子。脚注内容在视觉上应与正文有所区分。
+
+---
+
+## 十、数学公式（如配置 KaTeX / MathJax）
+
+### 10.1 行内公式
+
+质能方程：$E = mc^2$，其中 $m$ 是质量，$c$ 是光速（约 $3 \times 10^8 \text{ m/s}$）。
+
+欧拉恒等式被誉为数学中最美的公式：$e^{i\pi} + 1 = 0$
+
+### 10.2 块级公式
+
+二次方程的求根公式：
+
+$$
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+$$
+
+正态分布的概率密度函数：
+
+$$
+f(x) = \frac{1}{\sigma\sqrt{2\pi}} \exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)
+$$
+
+矩阵乘法：
+
+$$
+\begin{pmatrix} a & b \\ c & d \end{pmatrix}
+\begin{pmatrix} x \\ y \end{pmatrix}
+=
+\begin{pmatrix} ax + by \\ cx + dy \end{pmatrix}
+$$
+
+贝叶斯定理：
+
+$$
+P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}
+$$
+
+---
+
+## 十一、Callout / Admonition（如支持自定义组件）
+
+> **💡 提示**
+>
+> 这是一个提示块。如果你的博客主题支持 `<Callout>` 或 `:::tip` 语法，此处应渲染为带有特定背景色和图标的提示卡片。
+
+> **⚠️ 警告**
+>
+> 这是一个警告块，用于提醒读者注意潜在的风险或需要特别留意的事项。
+
+> **❌ 错误**
+>
+> 这是一个错误块，通常用于提示破坏性操作或不可恢复的变更。
+
+> **ℹ️ 信息**
+>
+> 这是一个信息块，用于补充背景知识或相关说明。
+
+---
+
+## 十二、MDX 自定义组件测试
+
+如果你的博客已注册以下组件，以下内容应正确渲染：
+
+### 12.1 Callout 组件
+
+{/* 取消注释以测试 */}
+{/*
+<Callout type="info">
+  这是通过 **MDX 组件** 渲染的信息提示块。
+</Callout>
+
+<Callout type="warning" title="注意事项">
+  该操作将**不可撤销**，请在执行前确认备份已完成。
+</Callout>
+*/}
+
+### 12.2 Tab 组件
+
+{/*
+<Tabs>
+  <Tab label="npm">
+    ```bash
+    npm install my-package
+    ```
+  </Tab>
+  <Tab label="yarn">
+    ```bash
+    yarn add my-package
+    ```
+  </Tab>
+  <Tab label="pnpm">
+    ```bash
+    pnpm add my-package
+    ```
+  </Tab>
+</Tabs>
+*/}
+
+### 12.3 CodeSandbox / StackBlitz 嵌入
+
+{/* <iframe src="https://codesandbox.io/embed/..." /> */}
+
+*（以上 MDX 组件部分已注释，请根据你的博客实际注册的组件取消注释并测试）*
+
+---
+
+## 十三、混合排版压力测试
+
+以下段落将多种格式混合使用，以测试复杂场景下的渲染稳定性。
+
+在现代前端开发中，**组件化思维**已经成为构建大型应用的核心范式。以 React 为例，一个典型的组件可能长这样：
+
+```jsx
+export function Badge({ label, variant = "default" }) {
+  return <span className={`badge badge-${variant}`}>{label}</span>;
+}
+```
+
+其核心理念是：*单一职责* + *可复用性* + *可测试性*。常见的状态管理方案包括：
+
+1. **useState** — 适合组件局部状态
+2. **useReducer** — 适合复杂状态逻辑
+3. **Context API** — 适合跨层级共享
+4. **Zustand / Jotai** — 轻量级全局状态库
+5. **Redux Toolkit** — 企业级复杂状态场景
+
+> 选择状态管理方案时，应遵循"够用就好"的原则——过度设计带来的维护成本，往往高于它解决的问题。[^arch]
+
+[^arch]: 这是关于软件架构的脚注，引自软件工程领域的普遍共识。
+
+相关性能指标参考：
+
+| 指标         | 目标值       | 测量工具              |
+| ------------ | ------------ | --------------------- |
+| LCP          | ≤ 2.5s       | Lighthouse / CrUX     |
+| FID / INP    | ≤ 200ms      | Web Vitals            |
+| CLS          | ≤ 0.1        | Lighthouse            |
+| TTFB         | ≤ 800ms      | WebPageTest           |
+
+最后，记住公式：$\text{性能} = f(\text{代码质量}, \text{架构设计}, \text{基础设施})$
+
+---
+
+## 十四、长代码块滚动测试
+
+以下是一段较长的代码，用于测试代码块是否支持横向滚动而不破坏页面布局：
+
+```typescript
+// 这是一行非常非常非常非常非常非常非常非常非常非常非常非常长的注释，用于测试代码块的横向滚动行为是否正常工作。
+type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
+type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
+type DeepReadonly<T> = T extends (infer R)[] ? DeepReadonlyArray<R> : T extends object ? DeepReadonlyObject<T> : T;
+```
+
+---
+
+## 十五、特殊字符与 HTML 实体
+
+版权符号：© 2026
+注册商标：®
+商标：™
+货币：¥100 / €100 / £100 / $100
+数学：× ÷ ± ≤ ≥ ≠ ≈ ∞ √ ∑ ∏
+箭头：→ ← ↑ ↓ ⇒ ⇐ ↔
+引号："弯引号" 『日文引号』 「单引号」
+破折号：en dash – em dash — 连字符-
+省略号：……（中文）...（英文）
+
+---
+
+## 十六、空白与间距边缘案例
+
+### 连续换行
+
+第一行（单个换行）
+第二行（单个换行）
+
+第三行（空行后）
+
+第四行（两个空行后）
+
+### 首行缩进（取决于主题设置）
+
+　　如果博客主题开启了首行缩进（使用全角空格），此行开头应有缩进。普通 Markdown 不支持首行缩进，通常需要 CSS 或特殊处理。
+
+---
+
+## 文档结束
+
+✅ 如果你能看到这行文字，说明文档已完整渲染。请逐节对照检查各种格式的显示效果，并根据实际渲染情况调整博客主题样式。
+
+---
+
+*文档生成时间：2026-05-04 | 格式版本：MDX 2.x 兼容*

@@ -1,0 +1,87 @@
+---
+title: "滚动条引发的布局抖动：排错与修复"
+pubDate: 2026-05-04
+author: "Fayoo"
+description: "页面切换时内容横向抖动，根因是 scrollbar-gutter 与 JS paddingRight 补偿的叠加冲突。"
+tags: ["CSS", "排错", "布局", "前端"]
+recommend: true
+postType: "coverTop"
+---
+
+## 一、问题
+
+切换路由时，页面内容横向偏移约 8px。短页面（无滚动条）与长页面（有滚动条）之间切换均能复现，关闭 PhotoGalleryModal 时同样出现。
+
+## 二、根因分析
+
+### 2.1 `scrollbar-gutter`
+
+浏览器默认行为：滚动条占用视口宽度，导致有无滚动条的页面视口宽度不一致。居中式布局（`mx-auto`）以视口宽度为参照，视口变化即产生偏移。
+
+修复：
+
+```css
+html {
+  scrollbar-gutter: stable;
+  overflow-x: hidden;
+}
+```
+
+`scrollbar-gutter: stable` 强制浏览器始终预留滚动条空间，视口宽度恒定。
+
+### 2.2 追加后抖动仍存在
+
+排除以下因素：
+
+- **Header 定位**：`position: static`，无固定定位干扰。
+- **`100vw` 使用**：项目全局搜索无匹配。
+- **Body padding**：无全局 body padding。
+
+定位到 `PhotoGalleryModal.tsx`：
+
+```typescript
+// 修复前
+if (isOpen) {
+  const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
+  document.body.style.overflow = 'hidden'
+  document.body.style.paddingRight = `${scrollbarWidth}px`
+} else {
+  document.body.style.overflow = ''
+  document.body.style.paddingRight = ''
+}
+```
+
+冲突链：
+
+1. `scrollbar-gutter: stable` 已预留滚动条空间（~8px）
+2. 组件打开时 `body.style.paddingRight` 再追加一份等量补偿
+3. 总偏移 16px，关闭灯箱时 `paddingRight` 移除，内容瞬间回弹
+
+JS 手动补偿与 CSS 声明式方案叠加，是本次抖动的直接原因。
+
+## 三、修复
+
+移除组件中的 `paddingRight` 操作，仅保留 `overflow` 控制：
+
+```typescript
+// 修复后
+if (isOpen) {
+  document.body.style.overflow = 'hidden'
+} else {
+  document.body.style.overflow = ''
+  window.scrollTo(0, top)
+}
+```
+
+职责划分：
+
+- CSS 层（`scrollbar-gutter: stable`）：统一管理滚动条空间预留
+- JS 层（`overflow: hidden`）：仅控制背景滚动锁定
+
+## 四、结论
+
+- `scrollbar-gutter: stable` 是处理滚动条布局抖动的标准方案（Chrome 94+，Firefox 97+）
+- 不应与 JS `paddingRight` 补偿混用——两者叠加会加剧偏移
+- 居中式布局应统一通过 `max-width` + `mx-auto` 管理宽度，一致的约束体系降低排查复杂度
+
+

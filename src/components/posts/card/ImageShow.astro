@@ -1,7 +1,7 @@
 ---
 import LqipImage from '~/components/base/LqipImage.astro'
 import { formatDate } from '~/lib/utils'
-import { POSTS_CONFIG } from '~/config'
+import { POSTS_CONFIG, SITE } from '~/config'
 import Badge from '~/components/posts/base/Badge.astro'
 import type { CardProps } from './List.astro'
 
@@ -23,7 +23,7 @@ const recommendText = POSTS_CONFIG.recommendText
     <a href={`/posts/${post.id}`} class="block relative">
       <div class="aspect-[1200/630] overflow-hidden bg-muted/30 relative">
         {
-          post.data.cover && (
+          post.data.cover ? (
             <LqipImage
               src={post.data.cover}
               alt=""
@@ -32,6 +32,16 @@ const recommendText = POSTS_CONFIG.recommendText
               loading="lazy"
               decoding="async"
               format="webp"
+              class="w-full h-full object-cover"
+            />
+          ) : (
+            <img
+              src={SITE.ogImage}
+              alt=""
+              width={IMAGE_WIDTH}
+              height={IMAGE_HEIGHT}
+              loading="lazy"
+              decoding="async"
               class="w-full h-full object-cover"
             />
           )

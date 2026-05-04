@@ -21,7 +21,7 @@ export const SITE: Site = {
   lang: 'en',
   base: '/',
   author: 'Dnzzk2',
-  ogImage: '/og-image.webp',
+  ogImage: '/og-image.png',
   transition: false,
   themeAnimation: true,
 }

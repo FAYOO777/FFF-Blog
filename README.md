@@ -8,9 +8,3 @@ Hey there! I stumbled upon a really nice Astro theme called [Litos](https://gith
 
 Things are still a bit messy around here. I'm figuring out what stays, what goes, and what gets a fresh coat of paint. Feel free to poke around, but maybe check back later when it's actually ready?
 
-## Stack
-
-- **[Astro](https://astro.build/)** — the web framework
-- **[Tailwind CSS](https://tailwindcss.com/)** — styling
-- **[Expressive Code](https://expressive-code.com/)** — code blocks
-- **Deployed on [Vercel](https://vercel.com/)**

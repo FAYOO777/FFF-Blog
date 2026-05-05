@@ -44,6 +44,9 @@
   // 并发控制：用于丢弃过期的搜索结果
   let searchReqId = 0
 
+  // 键盘导航状态
+  let selectedIndex = -1
+
   // 精确模式状态（持久化）
   let exactMode = false
   try { exactMode = localStorage.getItem('search-exact') === '1' } catch {}
@@ -104,25 +107,82 @@
     if (e.target === searchMask) closeSearch()
   })
 
+  // --- 键盘导航辅助函数 ---
+  const getResultItems = (): NodeListOf<HTMLElement> =>
+    searchResults?.querySelectorAll('.search-results-item') as NodeListOf<HTMLElement>
+
+  const updateSelection = (items: NodeListOf<HTMLElement>) => {
+    items.forEach((el, i) => {
+      const isSelected = i === selectedIndex
+      el.classList.toggle('selected', isSelected)
+      if (isSelected) {
+        el.scrollIntoView({ block: 'nearest' })
+      }
+    })
+  }
+
+  const resetSelection = () => {
+    selectedIndex = -1
+  }
+
   // 快捷键支持
   document.addEventListener('keydown', (e) => {
-    // ESC关闭
-    if (e.key === 'Escape') closeSearch()
-    // Ctrl+K 切换
+    // 搜索面板未打开时，只处理 Ctrl+K 打开
+    if (searchMask?.classList.contains('hidden')) {
+      if (e.ctrlKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        openSearch()
+      }
+      return
+    }
+
+    // 面板打开时：ESC 关闭
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeSearch()
+      return
+    }
+
+    // 面板打开时：Ctrl+K 关闭
     if (e.ctrlKey && e.key.toLowerCase() === 'k') {
       e.preventDefault()
-      if (searchMask?.classList.contains('hidden')) {
-        openSearch()
-      } else {
-        closeSearch()
+      closeSearch()
+      return
+    }
+
+    const items = getResultItems()
+    if (items.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      selectedIndex = Math.min(selectedIndex + 1, items.length - 1)
+      updateSelection(items)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      selectedIndex = Math.max(selectedIndex - 1, 0)
+      updateSelection(items)
+    } else if (e.key === 'Enter' && selectedIndex >= 0) {
+      e.preventDefault()
+      const target = items[selectedIndex] as HTMLAnchorElement
+      if (target) {
+        target.click()
       }
     }
   })
+
+  // --- 关键词高亮 ---
+  function highlightText(text: string, query: string): string {
+    if (!query) return text
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(${escaped})`, 'gi')
+    return text.replace(regex, '<mark>$1</mark>')
+  }
 
   // input event
   const handleInput = async (e: Event) => {
     if (searchResults) {
       searchResults.innerHTML = ''
+      resetSelection()
     }
     const target = e.target as HTMLInputElement
     const q = target.value.trim()
@@ -168,7 +228,7 @@
         resultItem.href = data.url
         resultItem.className = 'search-results-item'
         resultItem.innerHTML = `
-          <div class="search-results-title">${data.meta.title}</div>
+          <div class="search-results-title">${highlightText(data.meta.title, q)}</div>
           <div class="search-results-excerpt">${data.excerpt}</div>
         `
         resultItem.addEventListener('click', closeSearchIn)
@@ -187,7 +247,7 @@
             subItem.href = subResult.url
             subItem.className = 'search-results-item sub-result pl-4 border-l-2 border-accent'
             subItem.innerHTML = `
-              <div class="search-results-title text-sm opacity-80">${cleanTitle}</div>
+              <div class="search-results-title text-sm opacity-80">${highlightText(cleanTitle, q)}</div>
               <div class="search-results-excerpt text-xs">${subResult.excerpt}</div>
             `
             subItem.addEventListener('click', closeSearchIn)

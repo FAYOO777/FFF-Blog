@@ -372,6 +372,15 @@ input[type='search']::-moz-search-cancel-button {
   transform: scale(0.997);
 }
 
+/* 键盘导航选中状态 */
+.search-results-item.selected {
+  background-color: hsl(var(--accent) / 0.6);
+}
+
+.search-results-item.selected .search-results-title {
+  color: hsl(var(--primary));
+}
+
 .search-results-item.sub-result {
   padding-left: 1.25rem;
   border-left: 2px solid hsl(var(--accent));
@@ -412,12 +421,23 @@ input[type='search']::-moz-search-cancel-button {
   overflow: hidden;
 }
 
-.search-results-excerpt mark {
+.search-results-excerpt mark,
+.search-results-title mark {
   background-color: hsl(var(--accent));
   color: hsl(var(--accent-foreground));
   padding: 0.1em 0.25em;
   border-radius: 0.25em;
   font-weight: 600;
+  animation: markHighlight 0.4s ease-out;
+}
+
+@keyframes markHighlight {
+  from {
+    background-color: hsl(var(--primary) / 0.35);
+  }
+  to {
+    background-color: hsl(var(--accent));
+  }
 }
 
 /* 搜索面板动画 */

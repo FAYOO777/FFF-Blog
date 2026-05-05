@@ -28,7 +28,8 @@
 :root {
   --font-lexend: 'Lexend', 'Geist', 'ShangguSansSC-VF', sans-serif;
   --font-sans: 'Geist', 'ShangguSansSC-VF', sans-serif;
-  --font-geist-mono: 'GeistMono', 'Input Mono', 'Fira Code', 'ShangguSansSC-VF', monospace;
+  --font-geist-mono:
+    'GeistMono', 'Input Mono', 'Fira Code', 'ShangguSansSC-VF', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', monospace;
   --background: 255 100% 100%;
   --foreground: 225 15% 12%;
   --scrollbar: 220 20% 80%;

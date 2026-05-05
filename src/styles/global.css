@@ -62,7 +62,8 @@
     /* 字体族 */
     --font-lexend: 'Lexend', 'Geist', 'ShangguSansSC-VF', ui-sans-serif, system-ui, sans-serif;
     --font-sans: 'Geist', 'ShangguSansSC-VF', ui-sans-serif, system-ui, sans-serif;
-    --font-geist-mono: 'GeistMono', 'Input Mono', 'Fira Code', 'ShangguSansSC-VF', monospace;
+    --font-geist-mono:
+      'GeistMono', 'Input Mono', 'Fira Code', 'ShangguSansSC-VF', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', monospace;
 
     /* 基础色调 */
     --background: 0 20% 98%;

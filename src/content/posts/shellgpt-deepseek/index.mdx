@@ -1,0 +1,127 @@
+---
+title: "ShellGPT × DeepSeek 部署指南"
+pubDate: 2026-05-04
+author: "Fayoo"
+description: "在 Debian/Ubuntu 系统上，使用 DeepSeek API 驱动 ShellGPT 的完整部署记录，含踩坑与常用命令。"
+tags: ["ShellGPT", "DeepSeek", "AI", "Linux", "Shell", "部署"]
+---
+
+> 在 Debian/Ubuntu 系统上，使用 DeepSeek API 驱动 ShellGPT 的完整部署记录。
+
+---
+
+## 环境
+
+- OS：Debian / Ubuntu（externally-managed Python 环境）
+- Shell：Zsh
+- API：DeepSeek（OpenAI 兼容）
+
+---
+
+## 一、安装
+
+```bash
+apt install pipx -y
+pipx ensurepath
+source ~/.zshrc
+pipx install shell-gpt
+```
+
+---
+
+## 二、配置
+
+ShellGPT 的配置文件位于 `~/.config/shell_gpt/.sgptrc`。
+
+关键点：
+- 实际生效的 base URL 配置键名为 `API_BASE_URL`，**不是** `OPENAI_API_HOST`
+- 配置文件中不能有重复的键，**后者会覆盖前者**
+
+首次运行会自动生成配置文件（含大量默认项），直接覆盖写入关键字段：
+
+```bash
+# 先运行一次触发配置文件生成
+sgpt "init" 2>/dev/null || true
+
+# 修正关键配置
+sed -i "s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=sk-你的DeepSeek密钥|" ~/.config/shell_gpt/.sgptrc
+sed -i "s|^DEFAULT_MODEL=.*|DEFAULT_MODEL=deepseek-v4-flash|" ~/.config/shell_gpt/.sgptrc
+sed -i "s|^API_BASE_URL=default|API_BASE_URL=https://api.deepseek.com|" ~/.config/shell_gpt/.sgptrc
+
+# 删除重复的 API_BASE_URL 行（保留第一个匹配后删除后续）
+awk '!seen[$0]++' ~/.config/shell_gpt/.sgptrc > /tmp/.sgptrc_tmp && mv /tmp/.sgptrc_tmp ~/.config/shell_gpt/.sgptrc
+```
+
+或者手动编辑，确保文件中只有**一个** `API_BASE_URL`：
+
+```ini
+OPENAI_API_KEY=sk-你的DeepSeek密钥
+API_BASE_URL=https://api.deepseek.com
+DEFAULT_MODEL=deepseek-v4-flash
+```
+
+---
+
+## 三、验证
+
+```bash
+sgpt "hello"
+# -> Hello! 👋 ...
+```
+
+---
+
+## 四、踩坑记录
+
+| 错误现象 | 原因 | 解决 |
+|---|---|---|
+| `AuthenticationError 401` | 请求发往 OpenAI 而非 DeepSeek | 检查 `API_BASE_URL` 是否生效 |
+| 配置看起来正确但仍报错 | `.sgptrc` 中存在两个 `API_BASE_URL`，后面的 `default` 覆盖了自定义值 | 删除重复行 |
+| `command not found: sgpt` | pipx 路径未加载 | `source ~/.zshrc` 或重开终端 |
+| `OPENAI_API_HOST` 不生效 | sgpt 实际读取的键名是 `API_BASE_URL` | 改用正确键名 |
+
+---
+
+## 五、常用命令
+
+```bash
+# 问答
+sgpt "如何查看端口占用"
+
+# 生成并执行 Shell 命令（E 执行 / D 解释 / A 放弃）
+sgpt -s "找出占用磁盘最多的10个文件"
+
+# 生成代码
+sgpt -c "用 Python 写一个 ping 检测脚本"
+
+# 管道输入
+git diff | sgpt "生成 commit message"
+cat error.log | sgpt "分析错误原因"
+
+# 多轮对话
+sgpt --chat session1 "我有一个 Flask 项目"
+sgpt --chat session1 "加上 JWT 认证"
+
+# 交互式 REPL
+sgpt --repl temp
+
+# 终端快捷键集成（Ctrl+L 唤起）
+sgpt --install-integration && source ~/.zshrc
+```
+
+---
+
+## 六、可用模型
+
+| 模型 | 说明 |
+|---|---|
+| `deepseek-v4-flash` | 默认，速度快，日常使用 |
+| `deepseek-v4-pro` | 更强，支持思考模式 |
+
+> `deepseek-chat` / `deepseek-reasoner` 将于 2026-07-24 弃用。
+
+临时切换模型：
+
+```bash
+sgpt --model deepseek-v4-pro "解释快速排序的时间复杂度"
+```

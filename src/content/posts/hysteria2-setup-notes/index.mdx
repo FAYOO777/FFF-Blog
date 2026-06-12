@@ -1,0 +1,1143 @@
+---
+title: "Hysteria2 + Reality 自建节点配置记录"
+pubDate: 2026-06-13
+author: "Fayoo"
+description: "个人自用 VPS 搭建 Hysteria2 + VLESS Reality 双协议节点全流程记录，涵盖系统初始化、DNS 解析、防火墙配置、Hysteria2 ACME 证书、Xray Reality 部署、Loon/Mihomo 客户端配置及网络优化。"
+tags: ["Hysteria2", "Reality", "Xray", "VPS", "代理", "网络"]
+draft: true
+---
+
+> 适用场景：个人自用 VPS。  
+> 当前方案：Hysteria2 作为高速 UDP 主协议，VLESS Reality TCP 作为蜂窝网络备用/默认协议。  
+> 当前示例域名：`<YOUR_DOMAIN>`  
+> 当前服务器 IP：`<YOUR_IP>`  
+> 当前系统：Debian GNU/Linux 13 `trixie` x86_64  
+> 注意：本文档不包含真实 Hysteria2 密码、Reality UUID、PrivateKey、PublicKey、ShortId。
+
+---
+
+## 〇、当前最终目标状态
+
+最终服务器状态：
+
+```text
+系统：Debian 13 / Ubuntu 兼容
+域名：<YOUR_DOMAIN>
+IPv4：<YOUR_IP>
+
+协议 1：Hysteria2
+监听：443/udp
+证书：Hysteria2 内置 ACME + Let's Encrypt
+认证：password
+用途：Wi-Fi / 宽带下高速使用
+
+协议 2：VLESS Reality TCP
+监听：443/tcp
+服务：Xray
+Reality 伪装目标：www.bing.com:443
+用途：蜂窝数据下备用或默认使用
+
+客户端：Loon / Clash Party / Mihomo / Hiddify / Shadowrocket
+```
+
+最终端口状态应为：
+
+```text
+443/udp  hysteria
+443/tcp  xray
+80/tcp   ACME HTTP-01 验证和续证使用
+```
+
+检查命令：
+
+```bash
+ss -lntup | grep ':443'
+```
+
+理想输出类似：
+
+```text
+udp   UNCONN  *:443  hysteria
+tcp   LISTEN  *:443  xray
+```
+
+---
+
+## 一、系统初始化
+
+登录服务器：
+
+```bash
+ssh root@<YOUR_IP>
+```
+
+更新系统：
+
+```bash
+apt update && apt upgrade -y
+```
+
+安装基础工具：
+
+```bash
+apt install -y curl wget sudo vim nano ufw fail2ban ca-certificates gnupg lsb-release unzip openssl dnsutils
+```
+
+查看系统信息：
+
+```bash
+hostnamectl
+uname -m
+ip -br addr
+```
+
+当前已验证环境：
+
+```text
+Static hostname: InterServer-VPS-US
+Operating System: Debian GNU/Linux 13 (trixie)
+Kernel: Linux 6.12.x amd64
+Architecture: x86-64
+IPv4: <YOUR_IP>/24
+IPv6: <YOUR_IPv6_PREFIX>::/64
+```
+
+---
+
+## 二、DNS 解析
+
+在 DNS 后台添加：
+
+```text
+类型：A
+名称：hy2
+值：<YOUR_IP>
+代理状态：DNS only / 灰云
+```
+
+如果使用 Cloudflare，必须保持：
+
+```text
+DNS only / 灰云
+```
+
+不要开橙云代理，因为普通 Cloudflare 代理不转发 Hysteria2 的 UDP 443，也不适合这种自建代理端口。
+
+服务器验证：
+
+```bash
+dig +short A <YOUR_DOMAIN> @1.1.1.1
+```
+
+理想输出：
+
+```text
+<YOUR_IP>
+```
+
+---
+
+## 三、防火墙配置
+
+开放 SSH：
+
+```bash
+ufw allow 22/tcp
+```
+
+开放 Hysteria2 UDP 443：
+
+```bash
+ufw allow 443/udp
+```
+
+开放 Reality TCP 443：
+
+```bash
+ufw allow 443/tcp
+```
+
+开放 Hysteria2 ACME HTTP-01 需要的 80/tcp：
+
+```bash
+ufw allow 80/tcp
+```
+
+启用防火墙：
+
+```bash
+ufw enable
+```
+
+查看状态：
+
+```bash
+ufw status verbose
+```
+
+当前建议状态：
+
+```text
+22/tcp     ALLOW IN
+80/tcp     ALLOW IN
+443/udp    ALLOW IN
+443/tcp    ALLOW IN
+```
+
+说明：
+
+```text
+443/udp：Hysteria2
+443/tcp：Xray Reality
+80/tcp：Let's Encrypt HTTP-01 验证和续证
+```
+
+---
+
+## 四、安装 Hysteria2
+
+执行官方安装脚本：
+
+```bash
+bash <(curl -fsSL https://get.hy2.sh/)
+```
+
+查看版本：
+
+```bash
+hysteria version
+```
+
+默认配置文件：
+
+```text
+/etc/hysteria/config.yaml
+```
+
+服务名称：
+
+```text
+hysteria-server.service
+```
+
+---
+
+## 五、Hysteria2 正式配置：域名 + ACME 证书
+
+设置邮箱变量：
+
+```bash
+ACME_EMAIL="你的邮箱"
+```
+
+创建 ACME 目录并设置权限：
+
+```bash
+mkdir -p /etc/hysteria/acme
+chown -R hysteria:hysteria /etc/hysteria/acme
+```
+
+如果已有旧配置，先备份：
+
+```bash
+cp /etc/hysteria/config.yaml /etc/hysteria/config.yaml.bak.$(date +%F-%H%M%S)
+```
+
+生成 Hysteria2 密码：
+
+```bash
+HY2PASS=$(openssl rand -base64 24)
+echo "$HY2PASS"
+```
+
+写入正式配置：
+
+```bash
+cat > /etc/hysteria/config.yaml <<'EOF'
+listen: :443
+
+acme:
+  domains:
+    - <YOUR_DOMAIN>
+  email: <YOUR_EMAIL>
+  ca: letsencrypt
+  type: http
+  http:
+    altPort: 80
+  dir: /etc/hysteria/acme
+
+auth:
+  type: password
+  password: "<HY2_PASSWORD>"
+
+masquerade:
+  type: proxy
+  proxy:
+    url: https://www.bing.com
+    rewriteHost: true
+EOF
+```
+
+修复权限：
+
+```bash
+chown hysteria:hysteria /etc/hysteria/config.yaml
+chmod 600 /etc/hysteria/config.yaml
+```
+
+启动并重启服务：
+
+```bash
+systemctl enable --now hysteria-server.service
+systemctl restart hysteria-server.service
+```
+
+查看状态：
+
+```bash
+systemctl status hysteria-server.service --no-pager -l
+```
+
+如果日志出现：
+
+```text
+certificate obtained successfully
+server up and running
+```
+
+说明证书申请成功，服务正常。如果出现 `WARN stapling OCSP`，一般可以忽略，不影响连接。
+
+---
+
+## 六、Hysteria2 客户端信息
+
+客户端连接信息：
+
+```text
+server: <YOUR_DOMAIN>
+port: 443
+protocol: hysteria2
+password: <HY2_PASSWORD>
+sni: <YOUR_DOMAIN>
+skip-cert-verify: false
+udp: true
+alpn: h3
+```
+
+正式域名证书方案下，不需要：
+
+```text
+insecure=1
+skip-cert-verify=true
+sni=www.bing.com
+服务器 IP 直连
+```
+
+生成 Hysteria2 链接：
+
+```bash
+export HY2_DOMAIN="<YOUR_DOMAIN>"
+export HY2_PASS=$(awk -F'"' '/password:/ {print $2; exit}' /etc/hysteria/config.yaml)
+
+python3 - <<'PY'
+import os
+from urllib.parse import quote
+
+domain = os.environ["HY2_DOMAIN"]
+pw = os.environ["HY2_PASS"]
+
+print()
+print("====== Hysteria2 域名证书链接 ======")
+print(f"hysteria2://{quote(pw, safe='')}@{domain}:443/?sni={domain}#InterServer-HY2")
+print("=====================================")
+print()
+PY
+```
+
+---
+
+## 七、安装 Xray，新增 VLESS Reality TCP 备用协议
+
+### 7.1 为什么要加 Reality
+
+实测结果：
+
+```text
+Wi-Fi + Hysteria2：体验正常，4K 可用
+蜂窝数据 + Hysteria2：明显慢
+蜂窝数据直连：不慢
+蜂窝数据 + Reality TCP：速度恢复，4K 可用
+```
+
+判断：蜂窝网络对 UDP/Hysteria2 链路不友好，TCP 443 Reality 更适合蜂窝环境。
+
+最终搭配：
+
+```text
+Hysteria2：443/udp，适合 Wi-Fi / 宽带
+VLESS Reality：443/tcp，适合蜂窝数据 / 备用默认
+```
+
+两个协议可以同时使用 443，因为一个是 UDP，一个是 TCP，不冲突。
+
+---
+
+### 7.2 安装 Xray
+
+执行：
+
+```bash
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+```
+
+查看版本：
+
+```bash
+xray version
+```
+
+默认配置文件：
+
+```text
+/usr/local/etc/xray/config.json
+```
+
+服务名称：
+
+```text
+xray.service
+```
+
+---
+
+### 7.3 生成 Reality 参数
+
+生成 UUID：
+
+```bash
+cat /proc/sys/kernel/random/uuid
+```
+
+生成 X25519 密钥：
+
+```bash
+xray x25519
+```
+
+新版 Xray 可能输出类似：
+
+```text
+PrivateKey: <PRIVATE_KEY>
+Password (PublicKey): <PUBLIC_KEY>
+Hash32: <HASH32>
+```
+
+对应关系：
+
+```text
+PrivateKey：服务端 config.json 使用
+Password (PublicKey)：客户端 Loon / Mihomo 使用，也就是 Public Key
+Hash32：本次配置不用填
+```
+
+生成 ShortId：
+
+```bash
+openssl rand -hex 8
+```
+
+得到 16 位十六进制字符串，例如：
+
+```text
+9f3a1b2c4d5e6f70
+```
+
+---
+
+### 7.4 写入 Xray Reality 配置
+
+编辑配置：
+
+```bash
+nano /usr/local/etc/xray/config.json
+```
+
+写入：
+
+```json
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "vless-reality-tcp-443",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "<UUID>",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "www.bing.com:443",
+          "xver": 0,
+          "serverNames": [
+            "www.bing.com"
+          ],
+          "privateKey": "<PRIVATE_KEY>",
+          "shortIds": [
+            "<SHORT_ID>"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    }
+  ]
+}
+```
+
+测试配置：
+
+```bash
+xray run -test -config /usr/local/etc/xray/config.json
+```
+
+理想输出：
+
+```text
+Configuration OK.
+```
+
+---
+
+### 7.5 Xray systemd 注意事项
+
+如果 Xray 服务启动了但没有监听 `443/tcp`，检查：
+
+```bash
+systemctl cat xray
+```
+
+如果服务使用：
+
+```ini
+User=nobody
+```
+
+可能无法绑定低端口。可以改为 root：
+
+```bash
+nano /etc/systemd/system/xray.service
+```
+
+将：
+
+```ini
+User=nobody
+```
+
+改为：
+
+```ini
+User=root
+```
+
+重载并重启：
+
+```bash
+systemctl daemon-reload
+systemctl restart xray
+systemctl status xray --no-pager -l
+```
+
+检查监听：
+
+```bash
+ss -lntup | grep xray
+```
+
+理想输出：
+
+```text
+tcp   LISTEN  *:443  users:(("xray",pid=...,fd=...))
+```
+
+再检查双协议：
+
+```bash
+ss -lntup | grep ':443'
+```
+
+理想输出：
+
+```text
+udp   UNCONN  *:443  hysteria
+tcp   LISTEN  *:443  xray
+```
+
+---
+
+## 八、Reality 客户端信息
+
+客户端连接信息：
+
+```text
+协议：VLESS
+地址：<YOUR_DOMAIN>
+端口：443
+传输：tcp
+安全：reality
+UUID：<UUID>
+Flow：xtls-rprx-vision
+SNI / Server Name：www.bing.com
+Fingerprint：chrome
+Public Key：<PUBLIC_KEY>
+Short ID：<SHORT_ID>
+```
+
+注意：
+
+```text
+客户端填 Public Key，不填 PrivateKey
+客户端填 Short ID，不填 Hash32
+SNI 填 www.bing.com，不填 <YOUR_DOMAIN>
+```
+
+VLESS URI 模板：
+
+```text
+vless://<UUID>@<YOUR_DOMAIN>:443?encryption=none&security=reality&sni=www.bing.com&fp=chrome&pbk=<PUBLIC_KEY>&sid=<SHORT_ID>&type=tcp&flow=xtls-rprx-vision#InterServer-Reality
+```
+
+如果 Loon 不支持 URL 直接导入，就手动在配置 `[Proxy]` 中添加节点行。
+
+---
+
+## 九、Loon 完整配置思路
+
+当前 iPhone 端最终策略：
+
+```text
+默认代理：InterServer-Reality
+备用代理：InterServer-HY2
+国内：DIRECT
+Apple / Microsoft / OneDrive：默认 DIRECT
+Final：PROXY
+```
+
+使用逻辑：
+
+```text
+蜂窝数据：默认 Reality，速度更稳定
+Wi-Fi：Reality 默认可用；如果 HY2 更快，可手动切 HY2
+国内 App：规则直连
+```
+
+Loon `[Proxy]` 节点示例：
+
+```ini
+[Proxy]
+InterServer-HY2 = Hysteria2,<YOUR_DOMAIN>,443,"<HY2_PASSWORD>",sni=<YOUR_DOMAIN>,skip-cert-verify=false,udp=true,block-quic=false,ip-mode=v4-only
+InterServer-Reality = VLESS,<YOUR_DOMAIN>,443,"<UUID>",transport=tcp,flow=xtls-rprx-vision,public-key="<PUBLIC_KEY>",short-id=<SHORT_ID>,udp=true,block-quic=false,over-tls=true,sni=www.bing.com
+```
+
+Loon `[Proxy Group]` 推荐：
+
+```ini
+[Proxy Group]
+PROXY = select,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Proxy.png
+AI = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/ChatGPT.png
+YouTube = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/YouTube.png
+Google = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Google_Search.png
+GitHub = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/GitHub.png
+Dev = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Developer.png
+Steam = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Steam.png
+Game = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Game.png
+Streaming = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Streaming.png
+Social = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
+Telegram = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Telegram.png
+X = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Twitter.png
+Scholar = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Scholar.png
+Payment = select,PROXY,InterServer-Reality,InterServer-HY2,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/PayPal.png
+Apple = select,DIRECT,PROXY,InterServer-Reality,InterServer-HY2,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Apple.png
+Microsoft = select,DIRECT,PROXY,InterServer-Reality,InterServer-HY2,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Microsoft.png
+OneDrive = select,DIRECT,PROXY,InterServer-Reality,InterServer-HY2,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/OneDrive.png
+Domestic = select,DIRECT,PROXY,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/China_Map.png
+AdBlock = select,REJECT,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Advertising.png
+Final = select,PROXY,DIRECT,img-url = https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Final.png
+```
+
+Loon 使用建议：
+
+```text
+模式：Rule / 规则
+PROXY：默认选择 InterServer-Reality
+HY2：作为备用
+Apple / Microsoft / OneDrive：默认 DIRECT
+Domestic：DIRECT
+Final：PROXY
+```
+
+---
+
+## 十、Mihomo / Clash Party 配置
+
+Hysteria2 节点示例：
+
+```yaml
+proxies:
+  - name: InterServer-HY2
+    type: hysteria2
+    server: <YOUR_DOMAIN>
+    port: 443
+    password: "<HY2_PASSWORD>"
+    sni: <YOUR_DOMAIN>
+    skip-cert-verify: false
+    alpn:
+      - h3
+    udp: true
+```
+
+VLESS Reality 节点示例：
+
+```yaml
+proxies:
+  - name: InterServer-Reality
+    type: vless
+    server: <YOUR_DOMAIN>
+    port: 443
+    uuid: <UUID>
+    network: tcp
+    tls: true
+    udp: true
+    flow: xtls-rprx-vision
+    servername: www.bing.com
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: <PUBLIC_KEY>
+      short-id: <SHORT_ID>
+```
+
+推荐策略：
+
+```yaml
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - InterServer-Reality
+      - InterServer-HY2
+      - DIRECT
+```
+
+---
+
+## 十一、无桌面 Linux 使用 Mihomo
+
+适用场景：无桌面 Linux、服务器、NAS、本地命令行环境。
+
+配置位置：
+
+```text
+/etc/mihomo/config.yaml
+```
+
+systemd 服务示例：
+
+```ini
+[Unit]
+Description=Mihomo Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/mihomo -d /etc/mihomo
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动：
+
+```bash
+systemctl daemon-reload
+systemctl enable --now mihomo
+```
+
+终端代理：
+
+```bash
+export http_proxy=http://127.0.0.1:7890
+export https_proxy=http://127.0.0.1:7890
+export all_proxy=socks5h://127.0.0.1:7890
+```
+
+测试：
+
+```bash
+curl https://ipinfo.io
+```
+
+如果显示 InterServer / Los Angeles / `<YOUR_IP>`，说明代理生效。
+
+---
+
+## 十二、网络优化
+
+### 12.1 UDP 缓冲优化
+
+```bash
+cat > /etc/sysctl.d/99-hysteria2.conf <<'EOF'
+net.core.rmem_max=16777216
+net.core.wmem_max=16777216
+EOF
+
+sysctl --system
+```
+
+确认：
+
+```bash
+sysctl net.core.rmem_max net.core.wmem_max
+```
+
+理想输出：
+
+```text
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+```
+
+### 12.2 TCP BBR
+
+Reality / Trojan / TCP 备用协议建议开启 BBR：
+
+```bash
+cat > /etc/sysctl.d/99-network-tuning.conf <<'EOF'
+net.core.rmem_max=16777216
+net.core.wmem_max=16777216
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+EOF
+
+sysctl --system
+```
+
+确认：
+
+```bash
+sysctl net.ipv4.tcp_congestion_control net.core.default_qdisc
+```
+
+理想输出：
+
+```text
+net.ipv4.tcp_congestion_control = bbr
+net.core.default_qdisc = fq
+```
+
+---
+
+## 十三、状态检查命令
+
+Hysteria2 状态：
+
+```bash
+systemctl status hysteria-server.service --no-pager -l
+```
+
+Xray 状态：
+
+```bash
+systemctl status xray --no-pager -l
+```
+
+查看日志：
+
+```bash
+journalctl -u hysteria-server.service -n 80 --no-pager -l
+journalctl -u xray -n 80 --no-pager -l
+```
+
+查看端口：
+
+```bash
+ss -lntup | grep ':443'
+ss -lntp | grep ':80'
+```
+
+查看防火墙：
+
+```bash
+ufw status verbose
+```
+
+查看配置：
+
+```bash
+cat /etc/hysteria/config.yaml
+cat /usr/local/etc/xray/config.json
+```
+
+测试 Xray 配置：
+
+```bash
+xray run -test -config /usr/local/etc/xray/config.json
+```
+
+备份配置：
+
+```bash
+cp /etc/hysteria/config.yaml /etc/hysteria/config.yaml.bak.$(date +%F-%H%M%S)
+cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.bak.$(date +%F-%H%M%S)
+```
+
+---
+
+## 十四、常见问题
+
+### 14.1 Hysteria2 服务启动失败：permission denied
+
+修复：
+
+```bash
+chown hysteria:hysteria /etc/hysteria/key.pem /etc/hysteria/cert.pem /etc/hysteria/config.yaml
+chmod 600 /etc/hysteria/key.pem
+chmod 644 /etc/hysteria/cert.pem
+chmod 600 /etc/hysteria/config.yaml
+systemctl restart hysteria-server.service
+```
+
+当前正式 ACME 配置没有 `/etc/hysteria/server.crt` 或 `/etc/letsencrypt/live/...` 路径，证书由 Hysteria2 内置 ACME 管理在：
+
+```text
+/etc/hysteria/acme
+```
+
+### 14.2 Xray active 但没监听 443/tcp
+
+检查：
+
+```bash
+ss -lntup | grep xray
+systemctl cat xray
+journalctl -u xray -n 100 --no-pager
+```
+
+如果使用 `User=nobody`，尝试改为：
+
+```ini
+User=root
+```
+
+然后：
+
+```bash
+systemctl daemon-reload
+systemctl restart xray
+ss -lntup | grep ':443'
+```
+
+理想状态：
+
+```text
+tcp LISTEN *:443 xray
+```
+
+### 14.3 Reality 客户端连接失败
+
+重点检查：
+
+```text
+UUID 是否和服务端 clients.id 一致
+Public Key 是否使用 xray x25519 输出的 Password (PublicKey)
+是否错误使用了 Hash32
+Short ID 是否使用服务端 shortIds
+SNI 是否为 www.bing.com
+Flow 是否为 xtls-rprx-vision
+端口是否为 443
+传输是否为 tcp
+```
+
+特别注意：
+
+```text
+SNI：www.bing.com
+不是：<YOUR_DOMAIN>
+```
+
+### 14.4 Loon URL 导入不支持
+
+如果 Loon 不支持直接导入 `vless://`，可以在配置文本 `[Proxy]` 下手动添加：
+
+```ini
+InterServer-Reality = VLESS,<YOUR_DOMAIN>,443,"<UUID>",transport=tcp,flow=xtls-rprx-vision,public-key="<PUBLIC_KEY>",short-id=<SHORT_ID>,udp=true,block-quic=false,over-tls=true,sni=www.bing.com
+```
+
+### 14.5 蜂窝数据下 HY2 慢
+
+现象：
+
+```text
+Wi-Fi + HY2 正常
+蜂窝 + HY2 慢
+蜂窝直连不慢
+```
+
+处理：
+
+```text
+优先使用 InterServer-Reality
+HY2 保留为 Wi-Fi 或备用
+```
+
+不建议继续反复调整 HY2 的 `block-quic`，实测对该问题帮助不明显。
+
+### 14.6 中文配置文件乱码
+
+Sublime 保存配置时建议：
+
+```text
+File -> Save with Encoding -> UTF-8
+```
+
+给 Loon / iPhone / Linux 用，优先使用 UTF-8，不要保存为 GBK。
+
+---
+
+## 十五、当前推荐客户端
+
+```text
+Windows：Clash Party / Clash Verge Rev / Hiddify
+Linux CLI：Mihomo systemd
+Linux 桌面：Clash Party / Mihomo GUI
+macOS：Clash Party / Clash Verge Rev / Loon 生态客户端
+iPhone：Loon 优先，Shadowrocket / Hiddify 备用
+Android：Hiddify / FlClash
+```
+
+当前已验证：
+
+```text
+Clash Party + Mihomo YAML：HY2 正常
+无桌面 Linux + Mihomo：正常
+Loon + HY2：Wi-Fi 正常
+Loon + Reality：蜂窝速度恢复，4K 可用
+```
+
+---
+
+## 十六、安全建议
+
+不要公开：
+
+```text
+HY2 password
+Reality UUID
+Reality PrivateKey
+Reality PublicKey
+Reality ShortId
+完整 Loon 配置
+完整 Mihomo 配置
+```
+
+如果需要让 AI 帮忙改配置，用这些占位符：
+
+```text
+<HY2_PASSWORD>
+<UUID>
+<PRIVATE_KEY>
+<PUBLIC_KEY>
+<SHORT_ID>
+```
+
+配置文件权限：
+
+```bash
+chown hysteria:hysteria /etc/hysteria/config.yaml
+chmod 600 /etc/hysteria/config.yaml
+chmod 600 /usr/local/etc/xray/config.json
+```
+
+自动安全更新：
+
+```bash
+apt install -y unattended-upgrades
+dpkg-reconfigure -plow unattended-upgrades
+```
+
+选择：
+
+```text
+Yes
+```
+
+---
+
+## 十七、回滚方案
+
+停用 Reality，不影响 HY2：
+
+```bash
+systemctl stop xray
+systemctl disable xray
+```
+
+确认 HY2 仍在：
+
+```bash
+systemctl status hysteria-server.service --no-pager -l
+ss -lntup | grep ':443'
+```
+
+只要看到：
+
+```text
+udp *:443 hysteria
+```
+
+Hysteria2 仍然正常。
+
+一般不建议停用 HY2，只保留 Reality。HY2 在 Wi-Fi / 宽带下体验很好，建议保留作为备用。
+
+---
+
+## 十八、当前结论
+
+最终推荐使用方式：
+
+```text
+默认：InterServer-Reality
+备用：InterServer-HY2
+国内：DIRECT
+Apple / Microsoft / OneDrive：DIRECT
+Final：PROXY
+```
+
+原因：
+
+```text
+Reality TCP 443 在蜂窝数据下明显更稳，速度已恢复到 4K 可用
+HY2 UDP 443 在 Wi-Fi / 宽带下表现很好，可作为高速备用
+两者同端口不同协议，不冲突
+```

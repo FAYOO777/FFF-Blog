@@ -231,8 +231,8 @@ export const POSTS_CONFIG: PostConfig = {
   },
   postPageConfig: {
     size: 10,
-    type: 'image',
-    coverLayout: 'right',
+    type: 'compact',
+    // coverLayout: 'right', // 不需要图片，注释掉
   },
   tagsPageConfig: {
     size: 10,

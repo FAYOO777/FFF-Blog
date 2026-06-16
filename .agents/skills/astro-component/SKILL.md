@@ -60,7 +60,7 @@ Key conventions:
 - Always import `cn` from `~/lib/utils` for class merging
 - Accept `class?: string` and spread `...props` for flexibility
 - Use Tailwind CSS classes (Tailwind v4 syntax)
-- Icons use Iconify via Tailwind: `class="icon-[tabler--icon-name]"`
+- Icons use Iconify via Tailwind: `class="icon-[tabler--sun-filled]"`
 - Import from `~/config` for config values, `~/stores/*` for state
 - Use `Astro.props`, `Astro.url`, `Astro.site` for server-side values
 

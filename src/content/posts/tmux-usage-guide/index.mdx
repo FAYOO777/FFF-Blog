@@ -336,13 +336,13 @@ Ctrl-b :
 
 例如重新加载配置：
 
-```text
+```bash
 source-file ~/.tmux.conf
 ```
 
 或者：
 
-```text
+```bash
 set -g mouse on
 ```
 
@@ -356,7 +356,7 @@ tmux set -g mouse on
 
 tmux 命令模式里：
 
-```text
+```bash
 set -g mouse on
 ```
 
@@ -501,7 +501,7 @@ Esc
 
 建议开启 vi mode：
 
-```tmux
+```bash
 setw -g mode-keys vi
 ```
 
@@ -548,7 +548,7 @@ n
 
 现代 tmux 可以开启鼠标：
 
-```tmux
+```bash
 set -g mouse on
 ```
 
@@ -601,7 +601,7 @@ Ctrl-b ] 粘贴
 
 推荐基础配置：
 
-```tmux
+```bash
 set -s set-clipboard external
 ```
 
@@ -615,7 +615,7 @@ tmux info | grep Ms
 
 如果显示 missing，并且你用的是 tmux 3.2+，可以按你的外层终端 TERM 添加：
 
-```tmux
+```bash
 set -as terminal-features ',xterm-256color:clipboard'
 ```
 
@@ -637,7 +637,7 @@ sudo apt install -y xsel
 
 tmux 3.2+：
 
-```tmux
+```bash
 set -s copy-command 'xsel -ib'
 ```
 
@@ -649,19 +649,19 @@ sudo apt install -y wl-clipboard
 
 配置：
 
-```tmux
+```bash
 set -s copy-command 'wl-copy'
 ```
 
 macOS：
 
-```tmux
+```bash
 set -s copy-command 'pbcopy'
 ```
 
 如果使用 `copy-command`，并且你的终端也支持 OSC 52，可能出现重复或冲突。二选一即可。使用外部命令时可以关掉 OSC 52：
 
-```tmux
+```bash
 set -s set-clipboard off
 ```
 
@@ -675,7 +675,7 @@ set -s set-clipboard off
 
 推荐：
 
-```tmux
+```bash
 set -g default-terminal "tmux-256color"
 ```
 
@@ -691,7 +691,7 @@ infocmp tmux-256color >/dev/null && echo OK || echo MISSING
 
 如果 MISSING，先安装 ncurses terminfo，或者临时退回：
 
-```tmux
+```bash
 set -g default-terminal "screen-256color"
 ```
 
@@ -699,7 +699,7 @@ set -g default-terminal "screen-256color"
 
 tmux 3.2+ 推荐：
 
-```tmux
+```bash
 set -as terminal-features ',xterm-256color:RGB'
 ```
 
@@ -713,7 +713,7 @@ echo $TERM
 
 不要再优先使用旧教程里的：
 
-```tmux
+```bash
 set -ga terminal-overrides ",*:Tc"
 ```
 
@@ -739,7 +739,7 @@ nano ~/.tmux.conf
 
 内容：
 
-```tmux
+```bash
 ##### 基础行为 #####
 
 # 使用现代 tmux terminfo；如果服务器缺少 tmux-256color，再改为 screen-256color
@@ -841,7 +841,7 @@ tmux new -As main
 
 很多教程会建议把 prefix 从 `Ctrl-b` 改成 `Ctrl-a`：
 
-```tmux
+```bash
 set -g prefix C-a
 unbind C-b
 bind C-a send-prefix
@@ -857,7 +857,7 @@ bind C-a send-prefix
 
 如果你想让 `Ctrl-a` 和 `Ctrl-b` 都能用：
 
-```tmux
+```bash
 set -g prefix C-a
 bind C-b send-prefix
 bind C-a send-prefix
@@ -881,7 +881,7 @@ git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
 在 `~/.tmux.conf` 底部添加：
 
-```tmux
+```bash
 set -g @plugin 'tmux-plugins/tpm'
 
 # 可选：一些社区通用默认设置
@@ -919,7 +919,7 @@ Ctrl-b Alt-u
 
 比较实用的插件：
 
-```tmux
+```bash
 set -g @plugin 'tmux-plugins/tmux-sensible'
 set -g @plugin 'tmux-plugins/tmux-resurrect'
 ```
@@ -934,19 +934,19 @@ set -g @plugin 'tmux-plugins/tmux-resurrect'
 
 旧教程可能有：
 
-```tmux
+```bash
 bind -t vi-copy y copy-pipe 'xclip -in -selection clipboard'
 ```
 
 这属于旧版本写法。tmux 2.4 之后 copy mode key table 方式变了。现代配置应使用：
 
-```tmux
+```bash
 bind -T copy-mode-vi y send -X copy-selection-and-cancel
 ```
 
 tmux 3.2+ 要统一外部复制命令，用：
 
-```tmux
+```bash
 set -s copy-command 'xsel -ib'
 ```
 
@@ -954,7 +954,7 @@ set -s copy-command 'xsel -ib'
 
 旧教程可能写：
 
-```tmux
+```bash
 set -g status-fg white
 set -g status-bg black
 set -g mode-fg yellow
@@ -963,7 +963,7 @@ set -g mode-bg blue
 
 现代写法应使用 `*-style`：
 
-```tmux
+```bash
 set -g status-style fg=white,bg=black
 set -g mode-style fg=yellow,bg=blue
 ```
@@ -972,19 +972,19 @@ set -g mode-style fg=yellow,bg=blue
 
 不要在 tmux 里这样写：
 
-```tmux
+```bash
 set -g default-terminal "xterm-256color"
 ```
 
 tmux 内部的 TERM 应该描述 tmux 提供的终端能力，而不是假装自己是外层终端。现代优先：
 
-```tmux
+```bash
 set -g default-terminal "tmux-256color"
 ```
 
 不兼容时再退回：
 
-```tmux
+```bash
 set -g default-terminal "screen-256color"
 ```
 
@@ -992,13 +992,13 @@ set -g default-terminal "screen-256color"
 
 旧写法：
 
-```tmux
+```bash
 set -ga terminal-overrides ",*:Tc"
 ```
 
 现代 tmux 3.2+ 更推荐：
 
-```tmux
+```bash
 set -as terminal-features ',xterm-256color:RGB'
 ```
 
@@ -1076,7 +1076,7 @@ echo $TERM
 
 推荐配置：
 
-```tmux
+```bash
 set -g default-terminal "tmux-256color"
 set -as terminal-features ',xterm-256color:RGB'
 ```
@@ -1089,7 +1089,7 @@ infocmp tmux-256color
 
 没有就先改成：
 
-```tmux
+```bash
 set -g default-terminal "screen-256color"
 ```
 
@@ -1097,7 +1097,7 @@ set -g default-terminal "screen-256color"
 
 如果开启了：
 
-```tmux
+```bash
 set -g mouse on
 ```
 
@@ -1106,7 +1106,7 @@ tmux 会接管鼠标。可以：
 - 按住 `Shift` 再选择
 - 或关闭 mouse：
 
-```tmux
+```bash
 set -g mouse off
 ```
 

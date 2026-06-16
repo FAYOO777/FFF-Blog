@@ -26,7 +26,7 @@ Every post lives in its own folder under `src/content/posts/<slug>/` with:
 **Required fields** (always fill these):
 
 - `title` — article title (in quotes)
-- `pubDate` — publish date (use today's date unless specified)
+- `pubDate` — publish date. **Must use the actual current date from `date +%Y-%m-%d`. Never hardcode a date.** If the user explicitly says a different date, use that.
 - `author` — author name (default: `"Fayoo"`)
 - `description` — summary for cards/list pages
 - `tags` — array of 3-6 tags
@@ -60,6 +60,7 @@ Every post lives in its own folder under `src/content/posts/<slug>/` with:
 
 - Create folder structure and move files
 - Fill required frontmatter fields
+  - **pubDate**: Always run `date +%Y-%m-%d` to get today's date. Do not copy a hardcoded date string from previous scripts.
 - Remove H1 from body
 - Convert English `## 1.` → Chinese `## 一、`
 - Detect cover images and add `cover` field

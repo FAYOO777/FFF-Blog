@@ -1,0 +1,1303 @@
+---
+title: "tmux 使用指南：面向 SSH、服务器维护和长期任务的实用版本"
+pubDate: 2026-06-13
+author: "Fayoo"
+description: "tmux 3.2+ 实用指南，涵盖 session/window/pane 模型、常用快捷键、复制粘贴、鼠标支持、True Color、推荐配置及常见问题排查，面向 SSH 远程维护和长期任务场景。"
+tags: ["tmux", "SSH", "终端", "运维", "Linux"]
+---
+
+> 适用范围：tmux 3.2+、Linux 服务器、SSH 远程维护、Docker/系统服务排查、长时间命令执行。  
+> 写法原则：优先采用 tmux 官方手册和当前主流用法，避开旧教程里已经不推荐或容易踩坑的配置。
+
+---
+
+## 一、tmux 是什么
+
+tmux 是 **terminal multiplexer**，终端复用器。
+
+它解决的不是“终端好不好看”的问题，而是：
+
+1. SSH 断开后任务不要跟着死。
+2. 一个 SSH 窗口里同时管理多个 shell、日志、编辑器、监控命令。
+3. 离开电脑后，回来可以继续原来的终端现场。
+4. 多台设备连接同一台服务器时，可以重新接回原来的工作环境。
+
+典型场景：
+
+```bash
+ssh user@server
+tmux new -As main
+```
+
+然后你在里面执行升级、编译、下载、Docker 部署、日志观察。即使 SSH 断开，tmux session 里的程序仍然留在服务器上。重新 SSH 回来后：
+
+```bash
+tmux attach -t main
+```
+
+即可回到原来的界面。
+
+tmux 不等于后台任务管理器。长期服务应该交给 `systemd`、Docker、supervisor 等管理；tmux 适合临时维护、调试、交互式任务、长时间命令观察。
+
+---
+
+## 二、tmux 的核心模型
+
+理解 tmux 只需要记住四个概念：
+
+```text
+tmux server
+└── session 会话
+    └── window 窗口
+        └── pane 面板
+```
+
+### 2.1 server
+
+tmux 启动后会在后台运行一个 tmux server。所有 session、window、pane 都由这个 server 管理。
+
+一般用户不用手动管理 server。只有在配置彻底乱了、需要完全重启 tmux 时，才会用：
+
+```bash
+tmux kill-server
+```
+
+注意：`kill-server` 会杀掉所有 tmux session，里面运行的任务也会结束。不要随便用。
+
+### 2.2 session
+
+session 是工作区。
+
+建议按用途命名：
+
+```bash
+tmux new -s main
+tmux new -s docker
+tmux new -s deploy
+tmux new -s logs
+```
+
+不要长期用默认的 `0`、`1`、`2`，否则多个会话后很难区分。
+
+### 2.3 window
+
+window 类似浏览器标签页。
+
+一个 session 里可以有多个 window。例如：
+
+```text
+main session
+├── 1:shell
+├── 2:docker
+├── 3:logs
+└── 4:edit
+```
+
+### 2.4 pane
+
+pane 是一个 window 里的分屏区域。
+
+适合临时对照：
+
+```text
+左边：编辑配置
+右上：查看日志
+右下：执行测试命令
+```
+
+pane 不宜无限分。超过 3～4 个 pane 可读性会下降，这时更适合新建 window。
+
+---
+
+## 三、安装与版本检查
+
+### Debian / Ubuntu
+
+```bash
+sudo apt update
+sudo apt install -y tmux
+```
+
+### Rocky / Alma / CentOS / Fedora
+
+```bash
+sudo dnf install -y tmux
+```
+
+旧 CentOS 可能是：
+
+```bash
+sudo yum install -y tmux
+```
+
+### Arch Linux
+
+```bash
+sudo pacman -S tmux
+```
+
+### macOS
+
+```bash
+brew install tmux
+```
+
+### 检查版本
+
+```bash
+tmux -V
+```
+
+建议使用 tmux 3.2 或更新版本。很多现代配置，比如 `terminal-features`、`copy-command`，都是 tmux 3.2+ 更合适。
+
+如果系统仓库版本太老，不要盲目套新配置。先确认：
+
+```bash
+tmux -V
+```
+
+---
+
+## 四、最常用的 tmux 命令
+
+### 4.1 创建或进入一个 session
+
+最推荐的日常命令：
+
+```bash
+tmux new -As main
+```
+
+含义：
+
+- `new`：创建 session
+- `-s main`：session 名叫 main
+- `-A`：如果 main 已存在，就直接 attach 进去；如果不存在，就创建
+
+这比下面两步更适合日常使用：
+
+```bash
+tmux new -s main
+tmux attach -t main
+```
+
+### 4.2 查看已有 session
+
+```bash
+tmux ls
+```
+
+或：
+
+```bash
+tmux list-sessions
+```
+
+### 4.3 进入指定 session
+
+```bash
+tmux attach -t main
+```
+
+如果同一个 session 已经被别的客户端占用，并且你希望把旧客户端踢掉：
+
+```bash
+tmux attach -d -t main
+```
+
+这在你换电脑、换终端、SSH 断开后重新连接时很常用。
+
+### 4.4 退出但保留 session
+
+在 tmux 里面按：
+
+```text
+Ctrl-b d
+```
+
+含义：
+
+- `Ctrl-b` 是默认 prefix
+- `d` 是 detach
+
+detach 后，你会回到普通 shell，但 tmux 里的程序仍在后台运行。
+
+### 4.5 关闭当前 pane / window / session
+
+关闭当前 pane：
+
+```text
+Ctrl-b x
+```
+
+关闭当前 window：
+
+```text
+Ctrl-b &
+```
+
+关闭指定 session：
+
+```bash
+tmux kill-session -t main
+```
+
+关闭全部 tmux：
+
+```bash
+tmux kill-server
+```
+
+`kill-server` 是核按钮，少用。
+
+---
+
+## 五、prefix 键：tmux 操作入口
+
+tmux 默认 prefix 是：
+
+```text
+Ctrl-b
+```
+
+大部分 tmux 快捷键都是：
+
+```text
+先按 Ctrl-b
+松开
+再按一个命令键
+```
+
+不是同时按三个键。
+
+例如新建 window：
+
+```text
+Ctrl-b c
+```
+
+意思是：
+
+1. 按住 Ctrl，按 b。
+2. 松开。
+3. 按 c。
+
+---
+
+## 六、必会快捷键
+
+### 6.1 session 相关
+
+| 操作 | 快捷键 |
+|---|---|
+| detach 当前 session | `Ctrl-b d` |
+| 选择 session | `Ctrl-b s` |
+| 重命名 session | `Ctrl-b $` |
+
+### 6.2 window 相关
+
+| 操作 | 快捷键 |
+|---|---|
+| 新建 window | `Ctrl-b c` |
+| 关闭 window | `Ctrl-b &` |
+| 重命名 window | `Ctrl-b ,` |
+| 下一个 window | `Ctrl-b n` |
+| 上一个 window | `Ctrl-b p` |
+| 选择 window 列表 | `Ctrl-b w` |
+| 切到编号 0～9 的 window | `Ctrl-b 0` ～ `Ctrl-b 9` |
+| 回到上一个 active window | `Ctrl-b l` |
+
+### 6.3 pane 相关
+
+| 操作 | 快捷键 |
+|---|---|
+| 左右分屏 | `Ctrl-b %` |
+| 上下分屏 | `Ctrl-b "` |
+| 切换 pane | `Ctrl-b 方向键` |
+| 切到下一个 pane | `Ctrl-b o` |
+| 显示 pane 编号 | `Ctrl-b q` |
+| 关闭当前 pane | `Ctrl-b x` |
+| 当前 pane 最大化/还原 | `Ctrl-b z` |
+| 自动重新排列布局 | `Ctrl-b Space` |
+
+`Ctrl-b z` 很重要。分屏多了以后，临时放大当前 pane 看日志、编辑文件非常实用。
+
+---
+
+## 七、命令模式
+
+按：
+
+```text
+Ctrl-b :
+```
+
+进入 tmux 命令行。
+
+例如重新加载配置：
+
+```text
+source-file ~/.tmux.conf
+```
+
+或者：
+
+```text
+set -g mouse on
+```
+
+很多 tmux 命令既可以在 shell 里执行，也可以在 tmux 命令模式里执行。
+
+shell 里：
+
+```bash
+tmux set -g mouse on
+```
+
+tmux 命令模式里：
+
+```text
+set -g mouse on
+```
+
+---
+
+## 八、推荐的日常工作流
+
+### 8.1 登录服务器后固定进入 main
+
+```bash
+ssh user@server
+tmux new -As main
+```
+
+这是最稳妥、最通用的方式。
+
+如果你经常忘，可以加一个 alias：
+
+```bash
+alias ta='tmux new -As main'
+```
+
+写入：
+
+```bash
+nano ~/.bashrc
+```
+
+或 zsh：
+
+```bash
+nano ~/.zshrc
+```
+
+添加：
+
+```bash
+alias ta='tmux new -As main'
+alias tls='tmux ls'
+```
+
+生效：
+
+```bash
+source ~/.bashrc
+```
+
+或：
+
+```bash
+source ~/.zshrc
+```
+
+以后直接：
+
+```bash
+ta
+```
+
+### 8.2 维护 Docker 服务
+
+建议一个 session 叫 docker：
+
+```bash
+tmux new -As docker
+```
+
+window 规划：
+
+```text
+1:shell      普通命令
+2:compose    docker compose 操作
+3:logs       docker logs -f
+4:monitor    htop / btop / watch
+```
+
+创建 window：
+
+```text
+Ctrl-b c
+Ctrl-b ,
+```
+
+然后重命名为 `logs`、`compose` 等。
+
+### 8.3 长时间命令
+
+比如：
+
+```bash
+rsync -avh /data/ user@backup:/data/
+```
+
+或：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+放在 tmux 里执行。不要直接裸跑在普通 SSH 终端里。
+
+### 8.4 看日志
+
+```bash
+docker logs -f container_name
+```
+
+或：
+
+```bash
+journalctl -u nginx -f
+```
+
+建议放在单独 window，不要和编辑配置挤在一个 pane 里。
+
+---
+
+## 九、复制、滚动和搜索
+
+### 9.1 进入 copy mode
+
+```text
+Ctrl-b [
+```
+
+进入后可以用方向键、PageUp、PageDown 滚动历史输出。
+
+退出 copy mode：
+
+```text
+q
+```
+
+或：
+
+```text
+Esc
+```
+
+### 9.2 使用 vi 风格复制
+
+建议开启 vi mode：
+
+```tmux
+setw -g mode-keys vi
+```
+
+之后：
+
+1. `Ctrl-b [` 进入 copy mode。
+2. 用方向键或 vi 键移动。
+3. 按 `Space` 开始选择。
+4. 移动光标选择文本。
+5. 按 `Enter` 复制。
+6. `Ctrl-b ]` 粘贴到 tmux pane。
+
+### 9.3 搜索历史输出
+
+进入 copy mode 后：
+
+```text
+Ctrl-b [
+```
+
+搜索：
+
+```text
+/
+```
+
+输入关键词后回车。
+
+继续找下一个：
+
+```text
+n
+```
+
+反向搜索：
+
+```text
+?
+```
+
+---
+
+## 十、鼠标支持
+
+现代 tmux 可以开启鼠标：
+
+```tmux
+set -g mouse on
+```
+
+开启后可以：
+
+- 鼠标点击切换 pane
+- 拖动 pane 边框调整大小
+- 鼠标滚轮查看历史
+- 点击状态栏切换 window
+
+但要注意：开启 tmux mouse 后，终端自己的鼠标选择可能会被 tmux 接管。
+
+常见绕过方式：
+
+- Linux 终端：按住 `Shift` 再用鼠标选择
+- iTerm2：通常按住 `Option`
+- 不同终端行为可能不同
+
+如果你更习惯用终端原生复制，可以不开 mouse。
+
+---
+
+## 十一、剪贴板：现代配置方法
+
+tmux 的剪贴板是最容易被旧教程误导的地方。
+
+现在建议分两类处理。
+
+### 11.1 只在 tmux 内复制粘贴
+
+最简单，不需要额外配置：
+
+```text
+Ctrl-b [
+Space 选择
+Enter 复制
+Ctrl-b ] 粘贴
+```
+
+这只在 tmux 内部有效。
+
+### 11.2 复制到系统剪贴板
+
+现代 tmux 有两条路线：
+
+1. OSC 52：通过终端支持把内容写入本机系统剪贴板。
+2. 外部命令：Linux 用 `xsel`、`xclip`、`wl-copy`，macOS 用 `pbcopy`。
+
+如果你主要是 SSH 到服务器，优先考虑 OSC 52，因为它不依赖服务器上的图形环境。
+
+推荐基础配置：
+
+```tmux
+set -s set-clipboard external
+```
+
+如果终端支持 OSC 52，这通常就够。
+
+如果 tmux 检查不到 clipboard 能力，可以查：
+
+```bash
+tmux info | grep Ms
+```
+
+如果显示 missing，并且你用的是 tmux 3.2+，可以按你的外层终端 TERM 添加：
+
+```tmux
+set -as terminal-features ',xterm-256color:clipboard'
+```
+
+先在 tmux 外面查：
+
+```bash
+echo $TERM
+```
+
+假设外面是 `xterm-256color`，才写上面的配置。不要无脑复制别人的 TERM。
+
+### 11.3 Linux 桌面环境下的外部命令
+
+X11：
+
+```bash
+sudo apt install -y xsel
+```
+
+tmux 3.2+：
+
+```tmux
+set -s copy-command 'xsel -ib'
+```
+
+Wayland：
+
+```bash
+sudo apt install -y wl-clipboard
+```
+
+配置：
+
+```tmux
+set -s copy-command 'wl-copy'
+```
+
+macOS：
+
+```tmux
+set -s copy-command 'pbcopy'
+```
+
+如果使用 `copy-command`，并且你的终端也支持 OSC 52，可能出现重复或冲突。二选一即可。使用外部命令时可以关掉 OSC 52：
+
+```tmux
+set -s set-clipboard off
+```
+
+---
+
+## 十二、色彩、True Color 和 TERM
+
+这部分不要乱配。
+
+### 12.1 tmux 内部 TERM
+
+推荐：
+
+```tmux
+set -g default-terminal "tmux-256color"
+```
+
+这比老教程里的 `screen-256color` 更适合现代终端和现代应用，尤其是 Neovim、复杂 TUI、斜体、增强按键等场景。
+
+但有一个前提：目标系统的 terminfo 里必须有 `tmux-256color`。
+
+检查：
+
+```bash
+infocmp tmux-256color >/dev/null && echo OK || echo MISSING
+```
+
+如果 MISSING，先安装 ncurses terminfo，或者临时退回：
+
+```tmux
+set -g default-terminal "screen-256color"
+```
+
+### 12.2 True Color / RGB
+
+tmux 3.2+ 推荐：
+
+```tmux
+set -as terminal-features ',xterm-256color:RGB'
+```
+
+这里的 `xterm-256color` 应该替换为你 tmux 外面的 TERM：
+
+```bash
+echo $TERM
+```
+
+例如外面是 `wezterm`，就不要照抄 `xterm-256color`。应按实际情况配置。
+
+不要再优先使用旧教程里的：
+
+```tmux
+set -ga terminal-overrides ",*:Tc"
+```
+
+`terminal-overrides` 不是不能用，而是对 tmux 3.2+ 来说，`terminal-features` 更清晰、更现代。
+
+---
+
+## 十三、推荐 .tmux.conf
+
+下面是一份克制、现代、适合服务器的配置。
+
+创建：
+
+```bash
+subl ~/.tmux.conf
+```
+
+如果服务器没有 Sublime，就用：
+
+```bash
+nano ~/.tmux.conf
+```
+
+内容：
+
+```tmux
+##### 基础行为 #####
+
+# 使用现代 tmux terminfo；如果服务器缺少 tmux-256color，再改为 screen-256color
+set -g default-terminal "tmux-256color"
+
+# True Color。这里假设 tmux 外层 TERM 是 xterm-256color；请按 echo $TERM 调整
+set -as terminal-features ',xterm-256color:RGB'
+
+# 开启鼠标：可点击 pane、调整大小、滚轮查看历史
+set -g mouse on
+
+# vi 风格 copy mode
+setw -g mode-keys vi
+
+# 更大的历史滚动缓存
+set -g history-limit 50000
+
+# 从 1 开始编号，比 0 更直观
+set -g base-index 1
+setw -g pane-base-index 1
+
+# 新建 window/pane 时自动重新编号，避免 1 3 5 这种空洞
+set -g renumber-windows on
+
+# 降低 Esc 延迟；本机或高速 SSH 可以设很低，网络差可改大一点
+set -sg escape-time 10
+
+# 开启焦点事件，Neovim 等程序可感知终端焦点变化
+set -g focus-events on
+
+##### 窗口与 pane 操作 #####
+
+# 更直观的分屏快捷键：| 左右分屏，- 上下分屏
+bind | split-window -h
+bind - split-window -v
+
+# 保留当前路径新建 pane/window
+bind c new-window -c "#{pane_current_path}"
+bind '"' split-window -v -c "#{pane_current_path}"
+bind % split-window -h -c "#{pane_current_path}"
+bind | split-window -h -c "#{pane_current_path}"
+bind - split-window -v -c "#{pane_current_path}"
+
+# r 重新加载配置
+bind r source-file ~/.tmux.conf \; display-message "tmux config reloaded"
+
+# h/j/k/l 切换 pane，适合习惯 Vim 的用户
+bind h select-pane -L
+bind j select-pane -D
+bind k select-pane -U
+bind l select-pane -R
+
+# H/J/K/L 调整 pane 大小
+bind -r H resize-pane -L 5
+bind -r J resize-pane -D 5
+bind -r K resize-pane -U 5
+bind -r L resize-pane -R 5
+
+##### 复制模式 #####
+
+# vi 模式下按 v 开始选择，y 复制
+bind -T copy-mode-vi v send -X begin-selection
+bind -T copy-mode-vi y send -X copy-selection-and-cancel
+
+##### 状态栏：简洁实用 #####
+
+set -g status on
+set -g status-interval 5
+set -g status-position bottom
+
+set -g status-left-length 40
+set -g status-left '#[bold] #S #[default]'
+
+set -g status-right-length 80
+set -g status-right ' %Y-%m-%d %H:%M '
+
+setw -g window-status-format ' #I:#W '
+setw -g window-status-current-format ' #I:#W* '
+```
+
+加载配置：
+
+```bash
+tmux source-file ~/.tmux.conf
+```
+
+如果涉及 `default-terminal`、`terminal-features`、`set-clipboard` 这类底层终端能力，建议完全退出 tmux 后重启：
+
+```bash
+tmux kill-server
+tmux new -As main
+```
+
+注意：`tmux kill-server` 会结束所有 tmux 里的程序。先确认没有重要任务。
+
+---
+
+## 十四、是否要改 prefix
+
+很多教程会建议把 prefix 从 `Ctrl-b` 改成 `Ctrl-a`：
+
+```tmux
+set -g prefix C-a
+unbind C-b
+bind C-a send-prefix
+```
+
+这不是必须。
+
+建议：
+
+- 新手先用默认 `Ctrl-b`
+- 如果你以前用 GNU screen，或者觉得 `Ctrl-b` 难按，再改 `Ctrl-a`
+- 不要刚开始就照抄一堆陌生键位，否则排错很痛苦
+
+如果你想让 `Ctrl-a` 和 `Ctrl-b` 都能用：
+
+```tmux
+set -g prefix C-a
+bind C-b send-prefix
+bind C-a send-prefix
+```
+
+但长期看，保留一个主 prefix 更干净。
+
+---
+
+## 十五、TPM 插件管理器：可选，不是必需
+
+tmux 本身已经够用。不要一开始就装十几个插件。
+
+如果确实要用插件，TPM 是常见选择。
+
+安装：
+
+```bash
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+```
+
+在 `~/.tmux.conf` 底部添加：
+
+```tmux
+set -g @plugin 'tmux-plugins/tpm'
+
+# 可选：一些社区通用默认设置
+set -g @plugin 'tmux-plugins/tmux-sensible'
+
+# TPM 初始化，必须放在配置文件底部
+run '~/.tmux/plugins/tpm/tpm'
+```
+
+加载配置：
+
+```bash
+tmux source-file ~/.tmux.conf
+```
+
+安装插件：
+
+```text
+Ctrl-b I
+```
+
+更新插件：
+
+```text
+Ctrl-b U
+```
+
+卸载不再配置的插件：
+
+```text
+Ctrl-b Alt-u
+```
+
+建议少装插件。优先掌握 tmux 原生命令和配置。插件越多，跨服务器迁移越麻烦。
+
+比较实用的插件：
+
+```tmux
+set -g @plugin 'tmux-plugins/tmux-sensible'
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+```
+
+`tmux-resurrect` 可以保存和恢复 tmux 布局，但不要误以为它能可靠恢复所有程序状态。对于数据库、Docker、系统服务，仍然应该交给服务管理器。
+
+---
+
+## 十六、不建议继续照抄的旧写法
+
+### 16.1 老式 copy mode 绑定
+
+旧教程可能有：
+
+```tmux
+bind -t vi-copy y copy-pipe 'xclip -in -selection clipboard'
+```
+
+这属于旧版本写法。tmux 2.4 之后 copy mode key table 方式变了。现代配置应使用：
+
+```tmux
+bind -T copy-mode-vi y send -X copy-selection-and-cancel
+```
+
+tmux 3.2+ 要统一外部复制命令，用：
+
+```tmux
+set -s copy-command 'xsel -ib'
+```
+
+### 16.2 老式样式配置
+
+旧教程可能写：
+
+```tmux
+set -g status-fg white
+set -g status-bg black
+set -g mode-fg yellow
+set -g mode-bg blue
+```
+
+现代写法应使用 `*-style`：
+
+```tmux
+set -g status-style fg=white,bg=black
+set -g mode-style fg=yellow,bg=blue
+```
+
+### 16.3 无脑 `default-terminal xterm-256color`
+
+不要在 tmux 里这样写：
+
+```tmux
+set -g default-terminal "xterm-256color"
+```
+
+tmux 内部的 TERM 应该描述 tmux 提供的终端能力，而不是假装自己是外层终端。现代优先：
+
+```tmux
+set -g default-terminal "tmux-256color"
+```
+
+不兼容时再退回：
+
+```tmux
+set -g default-terminal "screen-256color"
+```
+
+### 16.4 无脑 `terminal-overrides ",*:Tc"`
+
+旧写法：
+
+```tmux
+set -ga terminal-overrides ",*:Tc"
+```
+
+现代 tmux 3.2+ 更推荐：
+
+```tmux
+set -as terminal-features ',xterm-256color:RGB'
+```
+
+并且应根据 tmux 外层的 `echo $TERM` 调整，不要对所有终端 `*` 一刀切。
+
+### 16.5 把 tmux 当成服务守护工具
+
+不要用 tmux 长期托管正式服务，例如：
+
+```bash
+tmux new -s app 'python app.py'
+```
+
+这适合临时调试，不适合生产。
+
+正式服务应该用：
+
+- systemd
+- Docker Compose
+- supervisor
+- pm2
+- Kubernetes
+
+tmux 负责交互式维护，不负责服务生命周期。
+
+---
+
+## 十七、常见问题排查
+
+### 17.1 `no sessions`
+
+说明当前没有 tmux session。
+
+创建一个：
+
+```bash
+tmux new -As main
+```
+
+### 17.2 SSH 断了，回来怎么恢复
+
+重新登录服务器：
+
+```bash
+ssh user@server
+tmux ls
+tmux attach -t main
+```
+
+如果只想一条命令：
+
+```bash
+tmux new -As main
+```
+
+### 17.3 进入 tmux 后颜色不对
+
+先查 tmux 版本：
+
+```bash
+tmux -V
+```
+
+查外层 TERM：
+
+```bash
+echo $TERM
+```
+
+在 tmux 内查：
+
+```bash
+echo $TERM
+```
+
+推荐配置：
+
+```tmux
+set -g default-terminal "tmux-256color"
+set -as terminal-features ',xterm-256color:RGB'
+```
+
+如果系统没有 `tmux-256color`：
+
+```bash
+infocmp tmux-256color
+```
+
+没有就先改成：
+
+```tmux
+set -g default-terminal "screen-256color"
+```
+
+### 17.4 鼠标复制不好用
+
+如果开启了：
+
+```tmux
+set -g mouse on
+```
+
+tmux 会接管鼠标。可以：
+
+- 按住 `Shift` 再选择
+- 或关闭 mouse：
+
+```tmux
+set -g mouse off
+```
+
+### 17.5 pane 太多看不清
+
+用：
+
+```text
+Ctrl-b z
+```
+
+放大当前 pane。
+
+或者把不同任务拆成不同 window，而不是堆在一个 window 里。
+
+### 17.6 配置改了不生效
+
+普通配置可以：
+
+```bash
+tmux source-file ~/.tmux.conf
+```
+
+或在 tmux 里：
+
+```text
+Ctrl-b :
+source-file ~/.tmux.conf
+```
+
+底层终端能力相关配置，建议重启 tmux server：
+
+```bash
+tmux kill-server
+tmux new -As main
+```
+
+前提是确认没有重要任务。
+
+### 17.7 不小心卡住或乱了
+
+先尝试 detach：
+
+```text
+Ctrl-b d
+```
+
+然后重新 attach：
+
+```bash
+tmux attach -d -t main
+```
+
+不要第一反应就 `kill-server`。
+
+---
+
+## 十八、推荐别名
+
+写入 `~/.bashrc` 或 `~/.zshrc`：
+
+```bash
+alias ta='tmux new -As main'
+alias tls='tmux ls'
+alias tat='tmux attach -t'
+alias tks='tmux kill-session -t'
+```
+
+用法：
+
+```bash
+ta
+tls
+tat docker
+tks logs
+```
+
+如果你经常按项目创建 session，可以用函数：
+
+```bash
+tnew() {
+  name="${1:-main}"
+  tmux new -As "$name"
+}
+```
+
+用法：
+
+```bash
+tnew
+tnew docker
+tnew deploy
+```
+
+---
+
+## 十九、脚本化创建工作区
+
+如果你经常固定开几个窗口，可以写脚本。
+
+例如 `~/bin/tmux-main`：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SESSION="main"
+
+tmux has-session -t "$SESSION" 2>/dev/null && {
+  tmux attach -t "$SESSION"
+  exit 0
+}
+
+tmux new-session -d -s "$SESSION" -n shell
+
+tmux new-window -t "$SESSION:" -n docker
+tmux new-window -t "$SESSION:" -n logs
+tmux new-window -t "$SESSION:" -n monitor
+
+tmux send-keys -t "$SESSION:monitor" "htop" C-m
+
+tmux select-window -t "$SESSION:1"
+tmux attach -t "$SESSION"
+```
+
+授权：
+
+```bash
+chmod +x ~/bin/tmux-main
+```
+
+运行：
+
+```bash
+tmux-main
+```
+
+这个脚本的逻辑是：
+
+1. 如果 `main` 已存在，直接进入。
+2. 如果不存在，创建 `shell/docker/logs/monitor` 几个 window。
+3. 在 monitor window 自动运行 `htop`。
+4. 进入 session。
+
+---
+
+## 二十、最小学习路径
+
+如果你只想快速上手，先记这几个：
+
+```bash
+tmux new -As main       # 创建或进入 main
+tmux ls                # 查看 session
+tmux attach -t main    # 进入 main
+tmux attach -d -t main # 踢掉旧客户端并进入
+```
+
+快捷键：
+
+```text
+Ctrl-b d       detach
+Ctrl-b c       新建 window
+Ctrl-b ,       重命名 window
+Ctrl-b n       下一个 window
+Ctrl-b p       上一个 window
+Ctrl-b %       左右分屏
+Ctrl-b "       上下分屏
+Ctrl-b 方向键  切换 pane
+Ctrl-b z       放大/还原 pane
+Ctrl-b [       滚动/复制模式
+Ctrl-b ]       粘贴 tmux buffer
+```
+
+日常使用原则：
+
+1. SSH 到服务器后先进入 tmux。
+2. 长时间命令必须放 tmux 里。
+3. session 按用途命名。
+4. window 按任务拆分。
+5. pane 只做临时对照，不要无限分屏。
+6. 服务交给 systemd/Docker，tmux 只做维护现场。
+7. 配置从少到多，不要一开始复制复杂主题和插件。
+
+---
+
+## 二十一、参考资料
+
+- tmux 官方 Wiki：<https://github.com/tmux/tmux/wiki>
+- tmux Getting Started：<https://github.com/tmux/tmux/wiki/Getting-Started>
+- tmux 官方手册：<https://man.openbsd.org/tmux.1>
+- tmux Clipboard 官方说明：<https://github.com/tmux/tmux/wiki/Clipboard>
+- tmux FAQ：<https://github.com/tmux/tmux/wiki/FAQ>
+- TPM 插件管理器：<https://github.com/tmux-plugins/tpm>
+- awesome-tmux 社区资源：<https://github.com/rothgar/awesome-tmux>

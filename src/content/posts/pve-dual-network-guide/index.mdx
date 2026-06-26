@@ -1,0 +1,588 @@
+---
+title: "Proxmox VE 双网络路径远程虚拟化环境部署教程"
+pubDate: 2026-06-26
+author: "Fayoo"
+description: "将 X99 主机改造为 Proxmox VE 远程虚拟化平台，实现管理链路与互联网访问链路分离，含 PVE 安装、WiFi 联网、双网桥配置、Windows/Ubuntu 虚拟机部署及 RDP 远程桌面。"
+tags: ["Proxmox", "虚拟化", "网络", "RDP", "运维", "Linux"]
+---
+
+## 一、目标
+
+将一台 X99 主机改造成一台基于 Proxmox VE 的远程虚拟化测试平台，重点实现 **管理链路与互联网访问链路分离**。
+
+最终效果：
+
+- 管理端使用自身网络访问互联网。
+- X99 / PVE 宿主机使用另一套独立网络访问互联网。
+- 管理端通过有线直连网络访问 PVE 宿主机和虚拟机桌面。
+- Windows / Linux 虚拟机通过 PVE 宿主机的独立网络出口访问互联网。
+- 虚拟机可用于软件兼容性验证、网络环境差异测试、多系统测试和远程桌面使用。
+- 尽量降低主力设备网络策略、系统配置和设备环境特征对测试结果的影响。
+
+## 二、架构概览
+
+本方案使用三类网络接口：
+
+| 网络 | 用途 | 说明 |
+|---|---|---|
+| 有线管理网络 | 远程管理、RDP、SSH、PVE Web | 管理端与 PVE 宿主机直连，不设置默认网关 |
+| 无线互联网出口 | PVE 宿主机访问互联网 | PVE 通过 WiFi 连接独立网络 |
+| 虚拟机 NAT 网络 | 虚拟机访问互联网 | 虚拟机经 PVE NAT 后从 WiFi 出口访问互联网 |
+
+示例地址规划如下，可按实际环境替换：
+
+| 对象 | 管理网络地址 | NAT 上网网络地址 | 说明 |
+|---|---:|---:|---|
+| 管理端 | `192.168.100.77/24` | 使用自身网络 | 用于访问 PVE 和虚拟机 |
+| PVE 宿主机 vmbr0 | `192.168.100.2/24` | - | 有线管理网桥，无默认网关 |
+| PVE 宿主机 wlp4s0 | - | `192.168.5.x/24` | WiFi 上网口，有默认网关 |
+| PVE 宿主机 vmbr1 | - | `10.10.20.1/24` | 虚拟机 NAT 网关 |
+| Windows VM | `192.168.100.10/24` | `10.10.20.10/24` | RDP + NAT 上网 |
+| Ubuntu VM | `192.168.100.20/24` | `10.10.20.20/24` | RDP/SSH + NAT 上网 |
+
+网络逻辑：
+
+```text
+管理端
+192.168.100.77
+    │
+    │ 有线直连，仅用于管理 / RDP / SSH
+    │
+PVE vmbr0
+192.168.100.2
+    │
+    ├── Windows VM：192.168.100.10
+    └── Ubuntu VM：192.168.100.20
+
+Windows / Ubuntu VM
+10.10.20.x
+    │
+PVE vmbr1：10.10.20.1
+    │
+NAT
+    │
+PVE WiFi：wlp4s0
+    │
+独立互联网出口
+```
+
+## 三、安装 Proxmox VE
+
+1. 下载 Proxmox VE ISO。
+2. 制作启动 U 盘。
+3. 在 X99 主机上安装 Proxmox VE。
+4. 安装时将管理口设置到有线网卡，例如：
+
+```text
+IP Address：192.168.100.2/24
+Gateway：不建议使用管理网段网关
+DNS：可暂时填写，后续根据实际网络调整
+```
+
+安装完成后，从管理端访问：
+
+```text
+https://192.168.100.2:8006
+```
+
+## 四、配置 PVE 软件源
+
+如果出现企业源未授权错误，可禁用企业源并添加 no-subscription 源。
+
+禁用企业源：
+
+```bash
+sed -i 's/^deb/# deb/g' /etc/apt/sources.list.d/pve-enterprise.list 2>/dev/null || true
+```
+
+添加 no-subscription 源：
+
+```bash
+cat > /etc/apt/sources.list.d/pve-no-subscription.sources <<'EOF'
+Types: deb
+URIs: http://download.proxmox.com/debian/pve
+Suites: trixie
+Components: pve-no-subscription
+Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+EOF
+```
+
+更新索引：
+
+```bash
+apt update
+```
+
+## 五、配置 PVE WiFi 上网
+
+PVE 默认不适合作为无线桌面系统使用，因此需要手动安装 WiFi 工具并配置 `wpa_supplicant`。
+
+安装工具：
+
+```bash
+apt install -y wpasupplicant iw rfkill wireless-regdb isc-dhcp-client
+```
+
+确认无线网卡名称：
+
+```bash
+iw dev
+ip -br link
+```
+
+本文使用以下名称作为示例：
+
+```text
+无线网卡：wlp4s0
+WiFi SSID：Your-WiFi-SSID
+```
+
+生成 WiFi 配置：
+
+```bash
+wpa_passphrase "Your-WiFi-SSID" "Your-WiFi-Password" > /etc/wpa_supplicant/wpa_supplicant-wlp4s0.conf
+chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlp4s0.conf
+```
+
+创建 systemd 服务：
+
+```bash
+cat > /etc/systemd/system/wifi-wlp4s0.service <<'EOF'
+[Unit]
+Description=Connect WiFi on wlp4s0
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/pkill -f "wpa_supplicant.*wlp4s0"
+ExecStartPre=-/usr/sbin/dhclient -r wlp4s0
+ExecStartPre=-/usr/bin/rm -f /run/wpa_supplicant/wlp4s0
+ExecStartPre=/usr/sbin/ip link set wlp4s0 up
+ExecStart=/usr/sbin/wpa_supplicant -i wlp4s0 -c /etc/wpa_supplicant/wpa_supplicant-wlp4s0.conf
+ExecStartPost=/bin/sh -c 'sleep 8; /usr/sbin/dhclient -4 wlp4s0 || true'
+ExecStopPost=-/usr/sbin/dhclient -r wlp4s0
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+启用服务：
+
+```bash
+systemctl daemon-reload
+systemctl enable --now wifi-wlp4s0.service
+```
+
+验证：
+
+```bash
+ip -br addr
+ip route
+ping -c 4 223.5.5.5
+```
+
+预期结果：
+
+```text
+wlp4s0 获取到独立网络地址
+default via 独立网络网关 dev wlp4s0
+公网 IP ping 测试正常
+```
+
+## 六、配置 PVE 有线管理网桥和虚拟机 NAT 网桥
+
+编辑 PVE 网络配置：
+
+```bash
+nano /etc/network/interfaces
+```
+
+推荐结构如下。请将 `<wired_nic>` 替换为实际有线网卡名称，例如 `enp3s0`、`eno1` 或 `nic0`。
+
+```ini
+auto lo
+iface lo inet loopback
+
+iface <wired_nic> inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+        address 192.168.100.2/24
+        bridge-ports <wired_nic>
+        bridge-stp off
+        bridge-fd 0
+
+auto vmbr1
+iface vmbr1 inet static
+        address 10.10.20.1/24
+        bridge-ports none
+        bridge-stp off
+        bridge-fd 0
+        post-up iptables -t nat -A POSTROUTING -s '10.10.20.0/24' -o wlp4s0 -j MASQUERADE
+        post-up iptables -A FORWARD -i vmbr1 -o wlp4s0 -j ACCEPT
+        post-up iptables -A FORWARD -i wlp4s0 -o vmbr1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+        post-down iptables -t nat -D POSTROUTING -s '10.10.20.0/24' -o wlp4s0 -j MASQUERADE
+        post-down iptables -D FORWARD -i vmbr1 -o wlp4s0 -j ACCEPT
+        post-down iptables -D FORWARD -i wlp4s0 -o vmbr1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+```
+
+启用 IPv4 转发：
+
+```bash
+cat > /etc/sysctl.d/99-pve-nat.conf <<'EOF'
+net.ipv4.ip_forward=1
+EOF
+
+sysctl --system
+```
+
+应用网络配置：
+
+```bash
+ifreload -a
+```
+
+验证：
+
+```bash
+ip -br addr
+ip route
+iptables -t nat -S
+iptables -S FORWARD
+```
+
+关键结果：
+
+```text
+vmbr0 = 192.168.100.2/24，无默认网关
+wlp4s0 = 独立网络地址，有默认网关
+vmbr1 = 10.10.20.1/24
+NAT 规则存在
+net.ipv4.ip_forward = 1
+```
+
+## 七、配置附加存储
+
+如果有单独 SATA SSD 可用于虚拟机磁盘，可将其配置为 LVM-thin 存储。
+
+确认磁盘：
+
+```bash
+lsblk -f
+```
+
+清理目标磁盘。注意：以下操作会清空 `/dev/sda`。
+
+```bash
+wipefs -a /dev/sda
+sgdisk --zap-all /dev/sda
+partprobe /dev/sda
+```
+
+创建 LVM-thin：
+
+```bash
+pvcreate /dev/sda
+vgcreate sata-vg /dev/sda
+lvcreate -l 100%FREE -T sata-vg/sata-thin
+pvesm add lvmthin sata-lvm --vgname sata-vg --thinpool sata-thin --content images,rootdir
+```
+
+验证：
+
+```bash
+pvesm status
+lvs
+```
+
+## 八、创建 Windows 11 虚拟机
+
+准备 ISO：
+
+- Windows 11 ISO
+- VirtIO 驱动 ISO：`virtio-win.iso`
+
+可将 ISO 上传到：
+
+```text
+pve → local → ISO 镜像
+```
+
+推荐 VM 配置：
+
+| 项目 | 设置 |
+|---|---|
+| VM ID | `100` |
+| 名称 | `Win11-Desktop` |
+| BIOS | OVMF UEFI |
+| 机型 | q35 |
+| TPM | v2.0 |
+| SCSI 控制器 | VirtIO SCSI single |
+| Qemu Agent | 勾选 |
+| CPU | 6 核，类型 `host` |
+| 内存 | 8192 MiB |
+| 系统盘 | 120 GiB，SCSI，IO thread，Discard |
+| 网卡 1 | VirtIO，桥接 `vmbr0` |
+| 网卡 2 | VirtIO，桥接 `vmbr1` |
+| 光驱 1 | Windows 11 ISO |
+| 光驱 2 | VirtIO ISO |
+
+安装 Windows 时，如果无法识别磁盘，需要从 VirtIO ISO 中加载驱动：
+
+```text
+vioscsi\w11\amd64
+```
+
+安装完成后，继续安装 VirtIO Guest Tools：
+
+```text
+D:\virtio-win-guest-tools.exe
+```
+
+如果网卡未识别，可在设备管理器中手动加载：
+
+```text
+NetKVM\w11\amd64
+```
+
+Windows 网络规划：
+
+| 网卡 | 桥接 | IP | 网关 | DNS |
+|---|---|---:|---:|---:|
+| 管理网卡 | vmbr0 | `192.168.100.10/24` | 留空 | 留空 |
+| 上网网卡 | vmbr1 | `10.10.20.10/24` | `10.10.20.1` | `223.5.5.5`, `1.1.1.1` |
+
+验证：
+
+```powershell
+ipconfig
+ping 192.168.100.2
+ping 10.10.20.1
+ping 223.5.5.5
+ping bing.com
+```
+
+开启远程桌面：
+
+```text
+设置 → 系统 → 远程桌面 → 开启
+```
+
+如需允许 ping：
+
+```powershell
+New-NetFirewallRule -DisplayName "Allow ICMPv4-In" -Protocol ICMPv4 -IcmpType 8 -Direction Inbound -Action Allow
+```
+
+从管理端连接：
+
+```text
+mstsc → 192.168.100.10
+```
+
+## 九、创建 Ubuntu XFCE 虚拟机
+
+推荐使用：
+
+```text
+Ubuntu Server + XFCE + xrdp
+```
+
+推荐 VM 配置：
+
+| 项目 | 设置 |
+|---|---|
+| VM ID | `101` |
+| 名称 | `Ubuntu-XFCE` |
+| BIOS | SeaBIOS 默认即可 |
+| SCSI 控制器 | VirtIO SCSI single |
+| Qemu Agent | 勾选 |
+| CPU | 4 核，类型 `host` |
+| 内存 | 4096 MiB |
+| 系统盘 | 50–60 GiB，SCSI，IO thread，Discard |
+| 网卡 1 | VirtIO，桥接 `vmbr0` |
+| 网卡 2 | VirtIO，桥接 `vmbr1` |
+
+安装 Ubuntu Server 时配置网络：
+
+| 接口 | 桥接 | IP | 网关 | DNS |
+|---|---|---:|---:|---:|
+| ens18 | vmbr0 | `192.168.100.20/24` | 留空 | 留空 |
+| ens19 | vmbr1 | `10.10.20.20/24` | `10.10.20.1` | `223.5.5.5`, `1.1.1.1` |
+
+安装时建议勾选：
+
+```text
+Install OpenSSH server
+```
+
+不要选择额外的 Snap 服务。
+
+安装完成后，通过 SSH 登录：
+
+```bash
+ssh <user>@192.168.100.20
+```
+
+安装 XFCE、xrdp 和虚拟机增强：
+
+```bash
+sudo apt update
+sudo apt install -y xfce4 xfce4-goodies xrdp openssh-server qemu-guest-agent dbus-x11 xorgxrdp
+```
+
+设置 xrdp 默认进入 XFCE。将 `<user>` 替换为实际用户名：
+
+```bash
+echo "startxfce4" | sudo tee /home/<user>/.xsession
+sudo chown <user>:<user> /home/<user>/.xsession
+```
+
+启用服务：
+
+```bash
+sudo systemctl enable --now xrdp
+sudo systemctl enable --now ssh
+sudo systemctl enable --now qemu-guest-agent
+sudo adduser xrdp ssl-cert
+sudo systemctl restart xrdp
+```
+
+检查 xrdp：
+
+```bash
+systemctl status xrdp --no-pager
+ss -lntp | grep 3389
+```
+
+从管理端连接：
+
+```text
+mstsc → 192.168.100.20
+```
+
+如果 RDP 黑屏或闪退，可强制指定 XFCE 启动脚本：
+
+```bash
+sudo tee /etc/xrdp/startwm.sh >/dev/null <<'EOF'
+#!/bin/sh
+unset DBUS_SESSION_BUS_ADDRESS
+unset XDG_RUNTIME_DIR
+startxfce4
+EOF
+
+sudo chmod +x /etc/xrdp/startwm.sh
+sudo systemctl restart xrdp
+```
+
+## 十、设置 PVE 按电源键无动作
+
+防止误按电源键导致宿主机关机。
+
+编辑配置：
+
+```bash
+nano /etc/systemd/logind.conf
+```
+
+设置：
+
+```ini
+HandlePowerKey=ignore
+HandlePowerKeyLongPress=ignore
+```
+
+重启服务：
+
+```bash
+systemctl restart systemd-logind
+```
+
+验证：
+
+```bash
+loginctl show-logind | grep -Ei "HandlePowerKey|PowerKey"
+```
+
+注意：该设置只能忽略正常电源键事件，不能阻止长按电源键强制断电。
+
+## 十一、常用验证命令
+
+PVE 宿主机：
+
+```bash
+ip -br addr
+ip route
+sysctl net.ipv4.ip_forward
+iptables -t nat -S
+iptables -S FORWARD
+systemctl status wifi-wlp4s0.service --no-pager
+```
+
+Windows VM：
+
+```powershell
+ipconfig
+ping 192.168.100.2
+ping 10.10.20.1
+ping 223.5.5.5
+ping bing.com
+```
+
+Ubuntu VM：
+
+```bash
+ip -br addr
+ip route
+ping -c 4 192.168.100.2
+ping -c 4 10.10.20.1
+ping -c 4 223.5.5.5
+ping -c 4 archive.ubuntu.com
+```
+
+管理端：
+
+```powershell
+ping 192.168.100.2
+ping 192.168.100.10
+ping 192.168.100.20
+Test-NetConnection 192.168.100.10 -Port 3389
+Test-NetConnection 192.168.100.20 -Port 3389
+```
+
+## 十二、性能与维护建议
+
+建议保留以下设置：
+
+- VM CPU 类型使用 `host`。
+- Windows VM 安装完整 VirtIO Guest Tools。
+- Linux VM 安装 `qemu-guest-agent`。
+- Windows 和 Ubuntu 均通过 RDP 使用，noVNC 仅作为救急控制台。
+- 管理网络不设置默认网关。
+- 虚拟机默认网关只设置在 NAT 上网网卡。
+- 关键变更前创建 PVE 快照。
+
+资源建议：
+
+| 资源 | 当前可用配置 | 后续更舒适配置 |
+|---|---:|---:|
+| PVE 宿主机内存 | 16 GB | 32 GB 或更高 |
+| Windows VM 内存 | 8 GB | 12–16 GB |
+| Ubuntu XFCE VM 内存 | 4 GB | 6–8 GB |
+| Windows VM CPU | 6 核 | 按负载调整 |
+| Ubuntu VM CPU | 4 核 | 按负载调整 |
+
+## 十三、最终结果
+
+最终完成后，X99 主机成为一台具备双网络路径的远程虚拟化测试平台：
+
+- PVE 宿主机通过有线管理网络被管理端访问。
+- PVE 宿主机通过独立 WiFi 网络访问互联网。
+- Windows VM 和 Ubuntu VM 均有独立的管理网卡与上网网卡。
+- 管理端可通过 RDP 分别访问 Windows 和 Ubuntu 桌面。
+- 虚拟机互联网流量不经过管理端网络，而是经 PVE NAT 从独立网络出口访问互联网。
+- 整体结构清晰，便于后续扩展、快照、备份和多系统测试。

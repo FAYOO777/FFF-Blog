@@ -10,6 +10,6 @@
     },
     "jsx": "react-jsx",
     "jsxImportSource": "react",
-    "types": []
+    "types": ["vitest/globals"]
   }
 }

@@ -17,10 +17,10 @@ export const SITE: Site = {
   title: 'FFF',
   description:
     'FFF is a modern blogging theme built on Astro.js, designed for developers. It supports multiple post layouts, photo displays, project displays, and more, providing an elegant user experience and powerful customization capabilities.',
-  website: 'https://litos.vercel.app/',
+  website: 'https://fayoo.fun/',
   lang: 'en',
   base: '/',
-  author: 'Dnzzk2',
+  author: 'Fayoo',
   ogImage: '/og-image.png',
   transition: false,
   themeAnimation: true,
@@ -68,19 +68,9 @@ export const FOOTER_LINKS: Link[] = [
 export const SOCIAL_LINKS: SocialLink[] = [
   {
     name: 'github',
-    url: 'https://github.com/Dnzzk2',
+    url: 'https://github.com/FAYOO777',
     icon: 'icon-[ri--github-fill]',
     count: 20,
-  },
-  {
-    name: 'twitter',
-    url: 'https://x.com/yourname',
-    icon: 'icon-[ri--twitter-x-fill]',
-  },
-  {
-    name: 'bilibili',
-    url: 'https://space.bilibili.com/yourSpaceId',
-    icon: 'icon-[ri--bilibili-fill]',
   },
 ]
 
@@ -215,16 +205,16 @@ export const SKILLSSHOWCASE_CONFIG: SkillsShowcaseConfig = {
 
 export const GITHUB_CONFIG: GithubConfig = {
   ENABLED: false, // 改为 false 即可关闭主页 GitHub 贡献图
-  GITHUB_USERNAME: 'Dnzzk2',
+  GITHUB_USERNAME: 'FAYOO777',
   TOOLTIP_ENABLED: true,
 }
 
 //--- Posts Page Config ---
 export const POSTS_CONFIG: PostConfig = {
   title: 'Posts',
-  description: 'Posts by Dnzzk2',
+  description: 'Posts by Fayoo',
   introduce: 'Notes to no one in particular. Maybe you. Maybe me.',
-  author: 'Dnzzk2',
+  author: 'Fayoo',
   homePageConfig: {
     size: 2,
     type: 'compact',
@@ -259,8 +249,8 @@ export const COMMENT_CONFIG: CommentConfig = {
     clientID: import.meta.env.PUBLIC_GITHUB_CLIENT_ID,
     clientSecret: import.meta.env.PUBLIC_GITHUB_CLIENT_SECRET,
     repo: 'gitalk-comment',
-    owner: 'Dnzzk2',
-    admin: ['Dnzzk2'],
+    owner: 'FAYOO777',
+    admin: ['FAYOO777'],
     language: 'en-US',
     perPage: 5,
     pagerDirection: 'last',

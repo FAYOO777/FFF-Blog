@@ -14,11 +14,7 @@
     "astro": "astro",
     "format": "prettier . --check --ignore-unknown",
     "format:write": "prettier . --write --ignore-unknown --cache",
-    "postbuild": "pagefind --site dist",
-    "test": "pnpm test:unit && pnpm test:e2e",
-    "test:unit": "vitest run",
-    "test:unit:watch": "vitest",
-    "test:e2e": "pnpm build && playwright test"
+    "postbuild": "pagefind --site dist"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.4",
@@ -77,11 +73,6 @@
     "shiki": "^3.23.0",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.21.0",
-    "unist-util-visit": "^5.1.0",
-    "@playwright/test": "^1.57.0",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.0",
-    "jsdom": "^26.1.0",
-    "vitest": "^4.0.15"
+    "unist-util-visit": "^5.1.0"
   }
 }
